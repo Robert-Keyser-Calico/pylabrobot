@@ -12,10 +12,25 @@
     /* Header */
     .header {
       height: 48px; background: #16213e; display: flex; align-items: center;
-      padding: 0 16px; border-bottom: 2px solid #0f3460; gap: 16px;
+      padding: 0 16px; border-bottom: 2px solid #0f3460; gap: 12px;
     }
     .header h1 { font-size: 16px; color: #e94560; white-space: nowrap; }
-    .status-area { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+
+    .toolbar { display: flex; align-items: center; gap: 6px; }
+    .toolbar button {
+      padding: 4px 12px; border: 1px solid #444; background: #16213e; color: #eee;
+      border-radius: 4px; cursor: pointer; font-size: 12px;
+    }
+    .toolbar button:hover { background: #0f3460; }
+    .toolbar button.primary { background: #0f3460; border-color: #e94560; }
+    .toolbar button.primary:hover { background: #e94560; }
+
+    #protocol-name {
+      font-size: 13px; color: #aaa; font-family: monospace;
+      margin-left: 8px; margin-right: auto;
+    }
+
+    .status-area { display: flex; align-items: center; gap: 6px; }
     .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #555; }
     .status-dot.connected { background: #4ec9b0; }
     .status-dot.disconnected { background: #e94560; }
@@ -23,31 +38,40 @@
     .status-text.connected { color: #4ec9b0; }
     .status-text.disconnected { color: #e94560; }
 
-    /* Main layout: deck (left) | editor+console (right) */
-    .main {
-      display: flex; height: calc(100vh - 48px);
-    }
+    /* Main layout */
+    .main { display: flex; height: calc(100vh - 48px); }
+
+    /* Deck panel */
     .deck-panel {
       flex: 1; min-width: 300px; position: relative; overflow: hidden;
       border-right: 1px solid #333;
     }
+    #kanvas { width: 100%; height: 100%; background: #f8f8f8; }
+
+    /* Resize handle */
+    .resize-handle { width: 4px; cursor: col-resize; background: #333; }
+    .resize-handle:hover { background: #e94560; }
+
+    /* Editor panel */
     .editor-panel {
-      width: 500px; min-width: 300px; display: flex; flex-direction: column;
+      width: 550px; min-width: 300px; display: flex; flex-direction: column;
       background: #1e1e2e;
     }
 
-    /* Deck canvas */
-    #kanvas { width: 100%; height: 100%; background: #f8f8f8; }
+    /* Protocol list bar */
+    .protocol-bar {
+      display: flex; align-items: center; gap: 4px; padding: 4px 8px;
+      background: #16213e; border-bottom: 1px solid #333;
+      overflow-x: auto; white-space: nowrap;
+    }
+    .protocol-item {
+      padding: 3px 10px; border: 1px solid #333; background: #1e1e2e; color: #aaa;
+      border-radius: 3px; cursor: pointer; font-size: 11px;
+    }
+    .protocol-item:hover { background: #0f3460; color: #eee; }
 
-    /* Editor placeholder (Phase 2: Monaco goes here) */
-    .editor-area {
-      flex: 1; padding: 12px; overflow-y: auto;
-      font-family: 'Courier New', monospace; font-size: 13px;
-      background: #1e1e2e; color: #ccc;
-    }
-    .editor-placeholder {
-      color: #555; font-style: italic; padding: 20px;
-    }
+    /* Monaco editor container */
+    #editor-container { flex: 1; min-height: 200px; }
 
     /* Console */
     .console-area {
@@ -55,10 +79,16 @@
       display: flex; flex-direction: column;
     }
     .console-header {
-      padding: 6px 12px; background: #16213e; font-size: 12px;
+      padding: 5px 12px; background: #16213e; font-size: 11px;
       color: #e94560; text-transform: uppercase; letter-spacing: 1px;
       border-bottom: 1px solid #333;
+      display: flex; align-items: center; justify-content: space-between;
     }
+    .console-header button {
+      padding: 2px 8px; border: 1px solid #444; background: transparent; color: #888;
+      border-radius: 3px; cursor: pointer; font-size: 10px;
+    }
+    .console-header button:hover { color: #eee; }
     #console-output {
       flex: 1; overflow-y: auto; padding: 8px 12px;
       font-family: 'Courier New', monospace; font-size: 12px;
@@ -67,12 +97,7 @@
     .console-line { margin-bottom: 1px; white-space: pre-wrap; }
     .console-line.stdout { color: #ccc; }
     .console-line.stderr { color: #e94560; }
-
-    /* Resize handle */
-    .resize-handle {
-      width: 4px; cursor: col-resize; background: #333;
-    }
-    .resize-handle:hover { background: #e94560; }
+    .console-line.info { color: #4ec9b0; }
 
     /* Hide visualizer UI elements not needed in runner */
     #resource-tree, #coords-panel, .side-panel { display: none !important; }
@@ -81,6 +106,13 @@
 <body>
   <div class="header">
     <h1>PyLabRobot Runner</h1>
+    <div class="toolbar">
+      <button onclick="newProtocol()">New</button>
+      <button onclick="saveCurrentProtocol()">Save</button>
+      <button class="primary" id="btn-run" onclick="runProtocol()" disabled>Run</button>
+      <button id="btn-stop" onclick="stopProtocol()" disabled>Stop</button>
+    </div>
+    <span id="protocol-name">untitled</span>
     <div class="status-area">
       <div class="status-dot" id="status-indicator"></div>
       <span class="status-text" id="status-label">Connecting...</span>
@@ -93,13 +125,16 @@
     </div>
     <div class="resize-handle" id="resize-handle"></div>
     <div class="editor-panel">
-      <div class="editor-area">
-        <div class="editor-placeholder">
-          Protocol editor — coming in Phase 2
-        </div>
+      <div class="protocol-bar">
+        <button class="protocol-item" onclick="newProtocol()" style="color:#e94560;border-color:#e94560">+</button>
+        <div id="protocol-list" style="display:contents"></div>
       </div>
+      <div id="editor-container"></div>
       <div class="console-area">
-        <div class="console-header">Console</div>
+        <div class="console-header">
+          <span>Console</span>
+          <button onclick="clearConsole()">Clear</button>
+        </div>
         <div id="console-output"></div>
       </div>
     </div>
@@ -117,18 +152,23 @@
   <input id="delta-lines-toggle" type="hidden" value="">
 
   <script>
-    // Stub functions expected by lib.js event handlers (defined in vis.js in the visualizer)
+    // Stub functions expected by lib.js
     function buildResourceTree() {}
     function addResourceToTree() {}
     function removeResourceFromTree() {}
     function updateSidepanelState() {}
     function openAllMachineToolPanels() {}
 
-    // Resize handle for editor panel
+    // Stub functions for Phase 3 (execution)
+    function runProtocol() { appendConsole("Execution not yet implemented (Phase 3)", "info"); }
+    function stopProtocol() {}
+    function clearConsole() { document.getElementById("console-output").innerHTML = ""; }
+
+    // Resize handle
     const resizeHandle = document.getElementById('resize-handle');
     const editorPanel = document.querySelector('.editor-panel');
     let isResizing = false;
-    resizeHandle.addEventListener('mousedown', (e) => {
+    resizeHandle.addEventListener('mousedown', () => {
       isResizing = true;
       document.body.style.cursor = 'col-resize';
       document.body.style.userSelect = 'none';
@@ -136,7 +176,7 @@
     document.addEventListener('mousemove', (e) => {
       if (!isResizing) return;
       const newWidth = document.body.clientWidth - e.clientX;
-      editorPanel.style.width = Math.max(200, Math.min(800, newWidth)) + 'px';
+      editorPanel.style.width = Math.max(250, Math.min(900, newWidth)) + 'px';
     });
     document.addEventListener('mouseup', () => {
       isResizing = false;
@@ -148,7 +188,10 @@
   <!-- Konva rendering layer from pylabrobot visualizer -->
   <script src="/static/lib.js"></script>
   <script>mode = MODE_VISUALIZER;</script>
-  <!-- Runner websocket client -->
+  <!-- Monaco Editor loader -->
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.50.0/min/vs/loader.js"></script>
+  <!-- Runner modules -->
+  <script src="/static/editor.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>
