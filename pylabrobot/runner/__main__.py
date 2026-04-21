@@ -48,6 +48,9 @@ def main():
   parser.add_argument("--port", type=int, default=5051, help="Server port (default: 5051)")
   parser.add_argument("--host", type=str, default="127.0.0.1", help="Server host")
   parser.add_argument("--no-browser", action="store_true", help="Don't open browser on start")
+  parser.add_argument("--vertex-project", type=str, default=None, help="GCP project for Vertex AI")
+  parser.add_argument("--vertex-location", type=str, default="us-central1", help="Vertex AI region")
+  parser.add_argument("--vertex-model", type=str, default="gemini-2.0-flash", help="Vertex AI model")
   args = parser.parse_args()
 
   deck = build_demo_deck()
@@ -61,7 +64,13 @@ def main():
   asyncio.run(device.setup())
   print("  Simulated device ready (8 channels, gripper arm)")
 
-  app = create_app(deck, device=device)
+  app = create_app(
+    deck,
+    device=device,
+    vertex_project=args.vertex_project,
+    vertex_location=args.vertex_location,
+    vertex_model=args.vertex_model,
+  )
 
   if not args.no_browser:
     import threading

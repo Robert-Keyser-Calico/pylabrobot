@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from pylabrobot.resources import Resource
+from pylabrobot.runner.assistant import Assistant
 from pylabrobot.runner.deck_bridge import DeckBridge
 from pylabrobot.runner.executor import ExecutionState, ProtocolExecutor
 from pylabrobot.runner.protocol_store import STARTER_TEMPLATE, ProtocolStore
@@ -30,10 +31,27 @@ class RunProtocolRequest(BaseModel):
   code: str
 
 
-def create_app(root_resource: Resource, device: Any = None) -> FastAPI:
+class ChatRequest(BaseModel):
+  message: str
+
+
+def create_app(
+  root_resource: Resource,
+  device: Any = None,
+  vertex_project: Optional[str] = None,
+  vertex_location: str = "us-central1",
+  vertex_model: str = "gemini-2.0-flash",
+) -> FastAPI:
   app = FastAPI(title="PyLabRobot Runner")
   bridge = DeckBridge(root_resource)
   store = ProtocolStore()
+  assistant = Assistant(
+    root_resource=root_resource,
+    num_channels=8,
+    project=vertex_project,
+    location=vertex_location,
+    model=vertex_model,
+  )
 
   def on_output(text: str, stream: str) -> None:
     msg = bridge._make_event("console_output", {"text": text, "stream": stream})
@@ -123,6 +141,21 @@ def create_app(root_resource: Resource, device: Any = None) -> FastAPI:
   async def run_stop():
     executor.stop()
     return {"status": "stopping"}
+
+  # ============== Assistant ==============
+
+  @app.post("/api/assistant/chat")
+  async def assistant_chat(body: ChatRequest):
+    try:
+      code = await assistant.chat(body.message)
+      return {"code": code}
+    except Exception as e:
+      raise HTTPException(status_code=500, detail=str(e))
+
+  @app.post("/api/assistant/clear")
+  async def assistant_clear():
+    assistant.clear_history()
+    return {"cleared": True}
 
   # ============== WebSocket ==============
 
