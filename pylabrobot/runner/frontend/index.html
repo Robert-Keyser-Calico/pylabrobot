@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PyLabRobot Runner</title>
+  <script src="https://unpkg.com/konva@9/konva.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; font-family: 'Segoe UI', Tahoma, sans-serif; background: #1a1a2e; color: #eee; }
+
+    /* Header */
+    .header {
+      height: 48px; background: #16213e; display: flex; align-items: center;
+      padding: 0 16px; border-bottom: 2px solid #0f3460; gap: 16px;
+    }
+    .header h1 { font-size: 16px; color: #e94560; white-space: nowrap; }
+    .status-area { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #555; }
+    .status-dot.connected { background: #4ec9b0; }
+    .status-dot.disconnected { background: #e94560; }
+    .status-text { font-size: 12px; color: #888; }
+    .status-text.connected { color: #4ec9b0; }
+    .status-text.disconnected { color: #e94560; }
+
+    /* Main layout: deck (left) | editor+console (right) */
+    .main {
+      display: flex; height: calc(100vh - 48px);
+    }
+    .deck-panel {
+      flex: 1; min-width: 300px; position: relative; overflow: hidden;
+      border-right: 1px solid #333;
+    }
+    .editor-panel {
+      width: 500px; min-width: 300px; display: flex; flex-direction: column;
+      background: #1e1e2e;
+    }
+
+    /* Deck canvas */
+    #kanvas { width: 100%; height: 100%; background: #f8f8f8; }
+
+    /* Editor placeholder (Phase 2: Monaco goes here) */
+    .editor-area {
+      flex: 1; padding: 12px; overflow-y: auto;
+      font-family: 'Courier New', monospace; font-size: 13px;
+      background: #1e1e2e; color: #ccc;
+    }
+    .editor-placeholder {
+      color: #555; font-style: italic; padding: 20px;
+    }
+
+    /* Console */
+    .console-area {
+      height: 200px; min-height: 100px; border-top: 1px solid #333;
+      display: flex; flex-direction: column;
+    }
+    .console-header {
+      padding: 6px 12px; background: #16213e; font-size: 12px;
+      color: #e94560; text-transform: uppercase; letter-spacing: 1px;
+      border-bottom: 1px solid #333;
+    }
+    #console-output {
+      flex: 1; overflow-y: auto; padding: 8px 12px;
+      font-family: 'Courier New', monospace; font-size: 12px;
+      background: #0a0a1a;
+    }
+    .console-line { margin-bottom: 1px; white-space: pre-wrap; }
+    .console-line.stdout { color: #ccc; }
+    .console-line.stderr { color: #e94560; }
+
+    /* Resize handle */
+    .resize-handle {
+      width: 4px; cursor: col-resize; background: #333;
+    }
+    .resize-handle:hover { background: #e94560; }
+
+    /* Hide visualizer UI elements not needed in runner */
+    #resource-tree, #coords-panel, .side-panel { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>PyLabRobot Runner</h1>
+    <div class="status-area">
+      <div class="status-dot" id="status-indicator"></div>
+      <span class="status-text" id="status-label">Connecting...</span>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="deck-panel">
+      <div id="kanvas"></div>
+    </div>
+    <div class="resize-handle" id="resize-handle"></div>
+    <div class="editor-panel">
+      <div class="editor-area">
+        <div class="editor-placeholder">
+          Protocol editor — coming in Phase 2
+        </div>
+      </div>
+      <div class="console-area">
+        <div class="console-header">Console</div>
+        <div id="console-output"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden elements expected by lib.js -->
+  <div id="resource-tree" style="display:none"></div>
+  <input id="coords-wrt-ref" type="hidden" value="">
+  <span id="coords-x-ref" style="display:none"></span>
+  <span id="coords-y-ref" style="display:none"></span>
+  <span id="coords-z-ref" style="display:none"></span>
+  <span id="coords-wrt-x-ref" style="display:none"></span>
+  <span id="coords-wrt-y-ref" style="display:none"></span>
+  <span id="coords-wrt-z-ref" style="display:none"></span>
+  <input id="delta-lines-toggle" type="hidden" value="">
+
+  <script>
+    // Stub functions expected by lib.js event handlers (defined in vis.js in the visualizer)
+    function buildResourceTree() {}
+    function addResourceToTree() {}
+    function removeResourceFromTree() {}
+    function updateSidepanelState() {}
+    function openAllMachineToolPanels() {}
+
+    // Resize handle for editor panel
+    const resizeHandle = document.getElementById('resize-handle');
+    const editorPanel = document.querySelector('.editor-panel');
+    let isResizing = false;
+    resizeHandle.addEventListener('mousedown', (e) => {
+      isResizing = true;
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (!isResizing) return;
+      const newWidth = document.body.clientWidth - e.clientX;
+      editorPanel.style.width = Math.max(200, Math.min(800, newWidth)) + 'px';
+    });
+    document.addEventListener('mouseup', () => {
+      isResizing = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    });
+  </script>
+
+  <!-- Konva rendering layer from pylabrobot visualizer -->
+  <script src="/static/lib.js"></script>
+  <script>mode = MODE_VISUALIZER;</script>
+  <!-- Runner websocket client -->
+  <script src="/static/app.js"></script>
+</body>
+</html>
