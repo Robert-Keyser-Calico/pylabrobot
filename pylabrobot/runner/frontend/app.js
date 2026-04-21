@@ -128,10 +128,10 @@ function connectWebSocket() {
 
   webSocket.onopen = function () {
     console.log("[runner] WebSocket connected to " + wsUrl);
-    console.log("[runner] Konva stage exists:", !!stage);
-    console.log("[runner] resourceLayer exists:", !!resourceLayer);
     webSocket.send(JSON.stringify({ event: "ready" }));
     updateStatusLabel("loaded");
+    const runBtn = document.getElementById("btn-run");
+    if (runBtn) runBtn.disabled = false;
   };
 
   webSocket.onerror = function (err) {

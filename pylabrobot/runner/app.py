@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from pylabrobot.resources import Resource
 from pylabrobot.runner.deck_bridge import DeckBridge
+from pylabrobot.runner.executor import ExecutionState, ProtocolExecutor
 from pylabrobot.runner.protocol_store import STARTER_TEMPLATE, ProtocolStore
 
 logger = logging.getLogger(__name__)
@@ -25,10 +26,25 @@ class SaveProtocolRequest(BaseModel):
   code: str
 
 
-def create_app(root_resource: Resource) -> FastAPI:
+class RunProtocolRequest(BaseModel):
+  code: str
+
+
+def create_app(root_resource: Resource, device: Any = None) -> FastAPI:
   app = FastAPI(title="PyLabRobot Runner")
   bridge = DeckBridge(root_resource)
   store = ProtocolStore()
+
+  def on_output(text: str, stream: str) -> None:
+    msg = bridge._make_event("console_output", {"text": text, "stream": stream})
+    import asyncio
+    try:
+      loop = asyncio.get_running_loop()
+      loop.create_task(bridge._broadcast(msg))
+    except RuntimeError:
+      pass
+
+  executor = ProtocolExecutor(on_output=on_output)
 
   app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
@@ -84,6 +100,29 @@ def create_app(root_resource: Resource) -> FastAPI:
   @app.get("/api/protocols/_starter")
   async def get_starter():
     return {"code": STARTER_TEMPLATE}
+
+  # ============== Execution ==============
+
+  @app.post("/api/run")
+  async def run_protocol(body: RunProtocolRequest):
+    if executor.state == ExecutionState.RUNNING:
+      raise HTTPException(status_code=409, detail="A protocol is already running")
+    if device is None:
+      raise HTTPException(status_code=400, detail="No device configured")
+
+    import asyncio
+
+    asyncio.create_task(executor.run(body.code, device))
+    return {"status": "started"}
+
+  @app.get("/api/run/status")
+  async def run_status():
+    return {"state": executor.state.value, "error": executor.error}
+
+  @app.post("/api/run/stop")
+  async def run_stop():
+    executor.stop()
+    return {"status": "stopping"}
 
   # ============== WebSocket ==============
 

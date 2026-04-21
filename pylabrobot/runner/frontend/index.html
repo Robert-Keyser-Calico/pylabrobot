@@ -159,10 +159,46 @@
     function updateSidepanelState() {}
     function openAllMachineToolPanels() {}
 
-    // Stub functions for Phase 3 (execution)
-    function runProtocol() { appendConsole("Execution not yet implemented (Phase 3)", "info"); }
-    function stopProtocol() {}
     function clearConsole() { document.getElementById("console-output").innerHTML = ""; }
+
+    async function runProtocol() {
+      if (!editor) return;
+      const code = editor.getValue();
+      document.getElementById("btn-run").disabled = true;
+      document.getElementById("btn-stop").disabled = false;
+      try {
+        const resp = await fetch("/api/run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: code }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) appendConsole(data.detail || "Run failed", "stderr");
+      } catch (e) {
+        appendConsole("Run request failed: " + e, "stderr");
+      }
+      pollExecutionStatus();
+    }
+
+    function stopProtocol() {
+      fetch("/api/run/stop", { method: "POST" });
+    }
+
+    function pollExecutionStatus() {
+      const poll = setInterval(async () => {
+        try {
+          const resp = await fetch("/api/run/status");
+          const data = await resp.json();
+          if (data.state !== "running") {
+            clearInterval(poll);
+            document.getElementById("btn-run").disabled = false;
+            document.getElementById("btn-stop").disabled = true;
+          }
+        } catch (e) {
+          clearInterval(poll);
+        }
+      }, 500);
+    }
 
     // Resize handle
     const resizeHandle = document.getElementById('resize-handle');

@@ -53,8 +53,15 @@ def main():
   deck = build_demo_deck()
 
   from pylabrobot.runner.app import create_app
+  from pylabrobot.runner.simulation import create_simulated_device
 
-  app = create_app(deck)
+  import asyncio
+
+  device = create_simulated_device(deck, num_channels=8, has_arm=True)
+  asyncio.run(device.setup())
+  print("  Simulated device ready (8 channels, gripper arm)")
+
+  app = create_app(deck, device=device)
 
   if not args.no_browser:
     import threading

@@ -14,16 +14,39 @@ logger = logging.getLogger(__name__)
 PROTOCOLS_DIR = Path.home() / ".pylabrobot" / "protocols"
 
 STARTER_TEMPLATE = '''\
-"""My Protocol"""
+"""My Protocol
+
+The run() function receives the device (simulated or real).
+Access deck resources by name via the resource tree.
+"""
 
 
-async def run(evo):
-  # Deck resources are available via the resource tree:
-  #   deck = evo.children[0]
-  #   plate = deck.get_resource("source_plate")
-  #   tips = deck.get_resource("tips_1")
+async def run(device):
+  deck = device.children[0]
+  tips = deck.get_resource("tips_1")
+  source = deck.get_resource("source_plate")
+  dest = deck.get_resource("dest_plate")
 
-  print("Hello from PyLabRobot!")
+  # Pick up tips from column 1
+  tip_spots = tips.get_items(["A1", "B1", "C1", "D1", "E1", "F1", "G1", "H1"])
+  print(f"Picking up tips from {tips.name}...")
+  await device.pip.pick_up_tips(tip_spots)
+
+  # Aspirate from source
+  wells_src = source.get_items(["A1", "B1", "C1", "D1", "E1", "F1", "G1", "H1"])
+  print("Aspirating 50 uL from source...")
+  await device.pip.aspirate(wells_src, vols=[50] * 8)
+
+  # Dispense to dest
+  wells_dst = dest.get_items(["A1", "B1", "C1", "D1", "E1", "F1", "G1", "H1"])
+  print("Dispensing 50 uL to dest...")
+  await device.pip.dispense(wells_dst, vols=[50] * 8)
+
+  # Drop tips
+  print("Dropping tips...")
+  await device.pip.drop_tips(tip_spots)
+
+  print("Protocol complete!")
 '''
 
 
