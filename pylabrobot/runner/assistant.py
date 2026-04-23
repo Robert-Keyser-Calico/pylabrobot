@@ -109,32 +109,39 @@ class ChatMessage:
 
 
 class Assistant:
-  """LLM code assistant backed by Vertex AI."""
+  """LLM code assistant backed by Google AI (API key) or Vertex AI."""
 
   def __init__(
     self,
     root_resource: Resource,
     num_channels: int = 8,
+    api_key: Optional[str] = None,
     project: Optional[str] = None,
     location: str = "us-central1",
     model: str = "gemini-2.0-flash",
   ):
     self._root = root_resource
     self._num_channels = num_channels
+    self._api_key = api_key
     self._project = project
     self._location = location
     self._model_name = model
     self._history: List[ChatMessage] = []
-    self._model = None
+    self._client = None
 
-  def _get_model(self):
-    if self._model is None:
-      import vertexai
-      from vertexai.generative_models import GenerativeModel
+  def _get_client(self):
+    if self._client is None:
+      from google import genai
 
-      vertexai.init(project=self._project, location=self._location)
-      self._model = GenerativeModel(self._model_name)
-    return self._model
+      if self._api_key:
+        self._client = genai.Client(api_key=self._api_key)
+      else:
+        self._client = genai.Client(
+          vertexai=True,
+          project=self._project,
+          location=self._location,
+        )
+    return self._client
 
   def _build_system_prompt(self) -> str:
     deck_layout = _describe_deck(self._root)
@@ -154,23 +161,27 @@ class Assistant:
 
     self._history.append(ChatMessage(role="user", content=user_message))
 
-    model = self._get_model()
+    client = self._get_client()
     system_prompt = self._build_system_prompt()
 
-    contents = [system_prompt]
+    prompt_parts = [system_prompt]
 
     if editor_code:
-      contents.append(
+      prompt_parts.append(
         f"The user's current script in the editor is:\n```python\n{editor_code}\n```\n"
         "Use this as context. If the user asks to modify it, return the complete "
         "updated script. If they ask for something new, generate a complete script."
       )
 
     for msg in self._history:
-      contents.append(f"{msg.role}: {msg.content}")
+      prompt_parts.append(f"{msg.role}: {msg.content}")
+
+    contents = "\n\n".join(prompt_parts)
 
     response = await asyncio.to_thread(
-      model.generate_content, contents
+      client.models.generate_content,
+      model=self._model_name,
+      contents=contents,
     )
 
     reply = response.text.strip()

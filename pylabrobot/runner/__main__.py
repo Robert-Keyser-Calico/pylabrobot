@@ -14,6 +14,10 @@ import uvicorn
 
 
 def main():
+  from dotenv import load_dotenv
+
+  load_dotenv()
+
   logging.basicConfig(
     filename="runner.log",
     level=logging.DEBUG,
@@ -36,12 +40,15 @@ def main():
   for lib_path in args.lib:
     sys.path.insert(0, lib_path)
 
+  import os
+
   from pylabrobot.runner.app import create_app
 
   app = create_app(
-    vertex_project=args.vertex_project,
-    vertex_location=args.vertex_location,
-    vertex_model=args.vertex_model,
+    google_api_key=os.environ.get("GOOGLE_API_KEY") or None,
+    vertex_project=args.vertex_project or os.environ.get("VERTEX_PROJECT"),
+    vertex_location=args.vertex_location or os.environ.get("VERTEX_LOCATION", "us-central1"),
+    vertex_model=args.vertex_model or os.environ.get("VERTEX_MODEL", "gemini-2.0-flash"),
   )
 
   if not args.no_browser:

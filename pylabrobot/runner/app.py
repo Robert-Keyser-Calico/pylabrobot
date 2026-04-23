@@ -37,9 +37,10 @@ class ChatRequest(BaseModel):
 
 
 def create_app(
+  google_api_key: Optional[str] = None,
   vertex_project: Optional[str] = None,
   vertex_location: str = "us-central1",
-  vertex_model: str = "gemini-2.0-flash-001",
+  vertex_model: str = "gemini-2.0-flash",
 ) -> FastAPI:
   app = FastAPI(title="PyLabRobot Runner")
 
@@ -52,6 +53,7 @@ def create_app(
   assistant = Assistant(
     root_resource=current_deck,
     num_channels=8,
+    api_key=google_api_key,
     project=vertex_project,
     location=vertex_location,
     model=vertex_model,
