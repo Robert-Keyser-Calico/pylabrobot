@@ -107,6 +107,10 @@ def create_app(
   async def list_protocols():
     return {"protocols": store.list_protocols()}
 
+  @app.get("/api/protocols/_starter")
+  async def get_starter():
+    return {"code": STARTER_TEMPLATE}
+
   @app.get("/api/protocols/{name}")
   async def get_protocol(name: str):
     if not store.exists(name):
@@ -124,10 +128,6 @@ def create_app(
       raise HTTPException(status_code=404, detail=f"Protocol '{name}' not found")
     store.delete(name)
     return {"name": name, "deleted": True}
-
-  @app.get("/api/protocols/_starter")
-  async def get_starter():
-    return {"code": STARTER_TEMPLATE}
 
   # ============== Execution ==============
 
@@ -171,21 +171,15 @@ def create_app(
   async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
     await bridge.add_client(ws)
-    logger.warning("WebSocket client connected")
     try:
       while True:
         data = await ws.receive_text()
         msg = json.loads(data)
-        logger.warning("WS received: %s", msg.get("event", msg))
         if msg.get("event") == "ready":
-          logger.warning("Sending initial state to client...")
           await bridge._send_initial_state(ws)
-          logger.warning("Initial state sent")
     except WebSocketDisconnect:
-      logger.warning("WebSocket client disconnected")
       bridge.remove_client(ws)
-    except Exception as e:
-      logger.warning("WebSocket error: %s", e)
+    except Exception:
       bridge.remove_client(ws)
 
   return app

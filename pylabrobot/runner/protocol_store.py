@@ -14,34 +14,32 @@ logger = logging.getLogger(__name__)
 PROTOCOLS_DIR = Path.home() / ".pylabrobot" / "protocols"
 
 STARTER_TEMPLATE = '''\
-"""My Protocol
+"""Pipetting Protocol — 200uL tips, 100uL transfer
 
-This script defines the deck layout and the protocol to run.
-Click Run to execute in simulation — the deck visualization
-will update in real-time as the protocol runs.
+Deck layout:
+  Rail 16: MP_3Pos carrier
+    Position 1: source plate (water in column 2)
+    Position 2: destination plate (empty)
+    Position 3: DiTi 200uL tip rack
 """
 
 # === Imports ===
 from pylabrobot.resources.tecan.tecan_decks import EVO150Deck
 from pylabrobot.resources.tecan.plate_carriers import MP_3Pos
-from pylabrobot.resources.tecan.tip_carriers import DiTi_3Pos
-from pylabrobot.resources.tecan.tip_racks import DiTi_50ul_SBS_LiHa
-from pylabrobot.resources.agilent.plates import agilent_96_wellplate_150uL_Vb
+from pylabrobot.resources.tecan.tip_racks import DiTi_200ul_SBS_LiHa
+from pylabrobot.resources.eppendorf.plates import Eppendorf_96_wellplate_250ul_Vb
 
 # === Deck Setup ===
 deck = EVO150Deck()
 
-plate_carrier = MP_3Pos("plate_carrier")
-deck.assign_child_resource(plate_carrier, rails=16)
-plate_carrier[0] = agilent_96_wellplate_150uL_Vb("source")
-plate_carrier[1] = agilent_96_wellplate_150uL_Vb("dest")
-
-tip_carrier = DiTi_3Pos("tip_carrier")
-deck.assign_child_resource(tip_carrier, rails=10)
-tip_carrier[0] = DiTi_50ul_SBS_LiHa("tips")
+carrier = MP_3Pos("carrier")
+deck.assign_child_resource(carrier, rails=16)
+carrier[0] = Eppendorf_96_wellplate_250ul_Vb("source")
+carrier[1] = Eppendorf_96_wellplate_250ul_Vb("dest")
+carrier[2] = DiTi_200ul_SBS_LiHa("tips")
 
 # === Protocol ===
-COLUMN_1 = ["A1", "B1", "C1", "D1", "E1", "F1", "G1", "H1"]
+COLUMN_2 = ["A2", "B2", "C2", "D2", "E2", "F2", "G2", "H2"]
 
 
 async def run(device):
@@ -49,17 +47,17 @@ async def run(device):
   source = deck.get_resource("source")
   dest = deck.get_resource("dest")
 
-  print("Picking up tips...")
-  await device.pip.pick_up_tips(tips.get_items(COLUMN_1))
+  print("Picking up 200uL tips from column 2...")
+  await device.pip.pick_up_tips(tips.get_items(COLUMN_2))
 
-  print("Aspirating 50 uL from source...")
-  await device.pip.aspirate(source.get_items(COLUMN_1), vols=[50] * 8)
+  print("Aspirating 100 uL from source column 2...")
+  await device.pip.aspirate(source.get_items(COLUMN_2), vols=[100] * 8)
 
-  print("Dispensing 50 uL to dest...")
-  await device.pip.dispense(dest.get_items(COLUMN_1), vols=[50] * 8)
+  print("Dispensing 100 uL to dest column 2...")
+  await device.pip.dispense(dest.get_items(COLUMN_2), vols=[100] * 8)
 
   print("Dropping tips...")
-  await device.pip.drop_tips(tips.get_items(COLUMN_1))
+  await device.pip.drop_tips(tips.get_items(COLUMN_2))
 
   print("Protocol complete!")
 '''
