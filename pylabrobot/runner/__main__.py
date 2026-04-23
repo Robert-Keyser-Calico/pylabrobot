@@ -32,7 +32,7 @@ def main():
   parser.add_argument("--lib", type=str, action="append", default=[], help="Add directory to Python path (for local labware imports)")
   parser.add_argument("--vertex-project", type=str, default=None, help="GCP project for Vertex AI")
   parser.add_argument("--vertex-location", type=str, default="us-central1", help="Vertex AI region")
-  parser.add_argument("--vertex-model", type=str, default="gemini-2.0-flash-001", help="Vertex AI model")
+  parser.add_argument("--vertex-model", type=str, default=None, help="Vertex AI model")
   args = parser.parse_args()
 
   import sys

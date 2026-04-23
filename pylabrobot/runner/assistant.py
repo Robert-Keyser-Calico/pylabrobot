@@ -134,8 +134,10 @@ class Assistant:
       from google import genai
 
       if self._api_key:
+        logger.info("Using Google AI API key mode")
         self._client = genai.Client(api_key=self._api_key)
       else:
+        logger.info("Using Vertex AI mode (project=%s, location=%s)", self._project, self._location)
         self._client = genai.Client(
           vertexai=True,
           project=self._project,

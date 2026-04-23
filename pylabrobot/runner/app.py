@@ -50,11 +50,18 @@ def create_app(
   current_deck = EVO150Deck()
   bridge = DeckBridge(current_deck)
   store = ProtocolStore()
+  if google_api_key:
+    logger.info("AI Assistant: using Google AI API key")
+  elif vertex_project:
+    logger.info("AI Assistant: using Vertex AI (project=%s)", vertex_project)
+  else:
+    logger.info("AI Assistant: no API key or Vertex project configured")
+
   assistant = Assistant(
     root_resource=current_deck,
     num_channels=8,
     api_key=google_api_key,
-    project=vertex_project,
+    project=vertex_project if not google_api_key else None,
     location=vertex_location,
     model=vertex_model,
   )
