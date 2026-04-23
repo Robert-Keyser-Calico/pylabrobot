@@ -25,10 +25,16 @@ def main():
   parser.add_argument("--port", type=int, default=5051, help="Server port (default: 5051)")
   parser.add_argument("--host", type=str, default="127.0.0.1", help="Server host")
   parser.add_argument("--no-browser", action="store_true", help="Don't open browser on start")
+  parser.add_argument("--lib", type=str, action="append", default=[], help="Add directory to Python path (for local labware imports)")
   parser.add_argument("--vertex-project", type=str, default=None, help="GCP project for Vertex AI")
   parser.add_argument("--vertex-location", type=str, default="us-central1", help="Vertex AI region")
   parser.add_argument("--vertex-model", type=str, default="gemini-2.0-flash", help="Vertex AI model")
   args = parser.parse_args()
+
+  import sys
+
+  for lib_path in args.lib:
+    sys.path.insert(0, lib_path)
 
   from pylabrobot.runner.app import create_app
 
