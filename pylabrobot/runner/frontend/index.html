@@ -11,26 +11,11 @@
 
     /* Header */
     .header {
-      height: 48px; background: #16213e; display: flex; align-items: center;
+      height: 40px; background: #16213e; display: flex; align-items: center;
       padding: 0 16px; border-bottom: 2px solid #0f3460; gap: 12px;
     }
-    .header h1 { font-size: 16px; color: #e94560; white-space: nowrap; }
-
-    .toolbar { display: flex; align-items: center; gap: 6px; }
-    .toolbar button {
-      padding: 4px 12px; border: 1px solid #444; background: #16213e; color: #eee;
-      border-radius: 4px; cursor: pointer; font-size: 12px;
-    }
-    .toolbar button:hover { background: #0f3460; }
-    .toolbar button.primary { background: #0f3460; border-color: #e94560; }
-    .toolbar button.primary:hover { background: #e94560; }
-
-    #protocol-name {
-      font-size: 13px; color: #aaa; font-family: monospace;
-      margin-left: 8px; margin-right: auto;
-    }
-
-    .status-area { display: flex; align-items: center; gap: 6px; }
+    .header h1 { font-size: 15px; color: #e94560; white-space: nowrap; }
+    .status-area { display: flex; align-items: center; gap: 6px; margin-left: auto; }
     .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #555; }
     .status-dot.connected { background: #4ec9b0; }
     .status-dot.disconnected { background: #e94560; }
@@ -38,27 +23,38 @@
     .status-text.connected { color: #4ec9b0; }
     .status-text.disconnected { color: #e94560; }
 
-    /* Main layout */
-    .main { display: flex; height: calc(100vh - 48px); }
+    /* Shared button styles */
+    .btn {
+      padding: 3px 10px; border: 1px solid #444; background: #16213e; color: #eee;
+      border-radius: 4px; cursor: pointer; font-size: 11px;
+    }
+    .btn:hover { background: #0f3460; }
+    .btn.primary { background: #0f3460; border-color: #e94560; }
+    .btn.primary:hover { background: #e94560; }
+    .btn.danger { border-color: #e94560; }
+    .btn.danger:hover { background: #e94560; }
+    .btn:disabled { opacity: 0.4; cursor: default; }
 
-    /* Deck panel */
+    /* Main 3-column layout: deck | editor+console | chat */
+    .main { display: flex; height: calc(100vh - 40px); }
+
+    /* Deck panel (left) */
     .deck-panel {
-      flex: 1; min-width: 300px; position: relative; overflow: hidden;
-      border-right: 1px solid #333;
+      flex: 1; min-width: 250px; position: relative; overflow: hidden;
     }
     #kanvas { width: 100%; height: 100%; background: #f8f8f8; }
 
-    /* Resize handle */
-    .resize-handle { width: 4px; cursor: col-resize; background: #333; }
+    /* Resize handles */
+    .resize-handle { width: 4px; cursor: col-resize; background: #333; flex-shrink: 0; }
     .resize-handle:hover { background: #e94560; }
 
-    /* Editor panel */
+    /* Editor panel (center) */
     .editor-panel {
-      width: 550px; min-width: 300px; display: flex; flex-direction: column;
-      background: #1e1e2e;
+      width: 500px; min-width: 300px; display: flex; flex-direction: column;
+      background: #1e1e2e; border-left: 1px solid #333; border-right: 1px solid #333;
     }
 
-    /* Protocol list bar */
+    /* Protocol bar: New, Save, protocol tabs */
     .protocol-bar {
       display: flex; align-items: center; gap: 4px; padding: 4px 8px;
       background: #16213e; border-bottom: 1px solid #333;
@@ -70,28 +66,34 @@
     }
     .protocol-item:hover { background: #0f3460; color: #eee; }
 
-    /* Monaco editor container */
+    #protocol-name {
+      font-size: 12px; color: #aaa; font-family: monospace;
+      padding: 0 8px; white-space: nowrap; overflow: hidden;
+    }
+
+    /* Monaco editor */
     #editor-container { flex: 1; min-height: 200px; }
+
+    /* Run/Stop bar below editor */
+    .run-bar {
+      display: flex; align-items: center; gap: 6px; padding: 5px 8px;
+      background: #16213e; border-top: 1px solid #333; border-bottom: 1px solid #333;
+    }
 
     /* Console */
     .console-area {
-      height: 200px; min-height: 100px; border-top: 1px solid #333;
+      height: 180px; min-height: 80px;
       display: flex; flex-direction: column;
     }
     .console-header {
-      padding: 5px 12px; background: #16213e; font-size: 11px;
+      padding: 4px 12px; background: #16213e; font-size: 10px;
       color: #e94560; text-transform: uppercase; letter-spacing: 1px;
       border-bottom: 1px solid #333;
       display: flex; align-items: center; justify-content: space-between;
     }
-    .console-header button {
-      padding: 2px 8px; border: 1px solid #444; background: transparent; color: #888;
-      border-radius: 3px; cursor: pointer; font-size: 10px;
-    }
-    .console-header button:hover { color: #eee; }
     #console-output {
-      flex: 1; overflow-y: auto; padding: 8px 12px;
-      font-family: 'Courier New', monospace; font-size: 12px;
+      flex: 1; overflow-y: auto; padding: 6px 10px;
+      font-family: 'Courier New', monospace; font-size: 11px;
       background: #0a0a1a;
     }
     .console-line { margin-bottom: 1px; white-space: pre-wrap; }
@@ -99,31 +101,23 @@
     .console-line.stderr { color: #e94560; }
     .console-line.info { color: #4ec9b0; }
 
-    /* Chat panel */
-    #chat-panel {
-      display: none; flex-direction: column;
-      position: absolute; bottom: 0; right: 0;
-      width: 400px; height: 500px; max-height: 70vh;
-      background: #1e1e2e; border: 1px solid #0f3460; border-radius: 8px 0 0 0;
-      z-index: 100; box-shadow: -4px -4px 12px rgba(0,0,0,0.4);
+    /* Chat panel (right, always visible) */
+    .chat-panel {
+      width: 350px; min-width: 200px; display: flex; flex-direction: column;
+      background: #1e1e2e;
     }
     .chat-header {
-      padding: 8px 12px; background: #16213e; border-bottom: 1px solid #333;
+      padding: 6px 12px; background: #16213e; border-bottom: 1px solid #333;
       display: flex; align-items: center; justify-content: space-between;
-      border-radius: 8px 0 0 0;
     }
-    .chat-header span { font-size: 13px; color: #e94560; font-weight: bold; }
-    .chat-header button {
-      background: none; border: none; color: #888; cursor: pointer; font-size: 14px;
-    }
-    .chat-header button:hover { color: #eee; }
+    .chat-header span { font-size: 12px; color: #e94560; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; }
     #chat-messages {
       flex: 1; overflow-y: auto; padding: 10px;
       display: flex; flex-direction: column; gap: 8px;
     }
     .chat-msg {
       padding: 8px 12px; border-radius: 6px; font-size: 13px;
-      max-width: 90%; word-wrap: break-word;
+      max-width: 95%; word-wrap: break-word;
     }
     .chat-msg.user {
       background: #0f3460; color: #eee; align-self: flex-end;
@@ -132,10 +126,10 @@
       background: #252540; color: #ccc; align-self: flex-start;
     }
     .chat-code {
-      font-family: 'Courier New', monospace; font-size: 12px;
+      font-family: 'Courier New', monospace; font-size: 11px;
       background: #0a0a1a; padding: 8px; border-radius: 4px;
       overflow-x: auto; white-space: pre; margin: 4px 0;
-      max-height: 300px; overflow-y: auto;
+      max-height: 250px; overflow-y: auto;
     }
     .chat-actions {
       display: flex; gap: 6px; margin-top: 6px;
@@ -158,22 +152,14 @@
       border-radius: 4px; cursor: pointer; font-size: 13px;
     }
     .chat-input-area button:hover { background: #c73650; }
-    .toolbar button.active { background: #e94560; border-color: #e94560; }
 
-    /* Hide visualizer UI elements not needed in runner */
+    /* Hide visualizer UI elements */
     #resource-tree, #coords-panel, .side-panel { display: none !important; }
   </style>
 </head>
 <body>
   <div class="header">
     <h1>PyLabRobot Runner</h1>
-    <div class="toolbar">
-      <button onclick="newProtocol()">New</button>
-      <button onclick="saveCurrentProtocol()">Save</button>
-      <button class="primary" id="btn-run" onclick="runProtocol()" disabled>Run</button>
-      <button id="btn-stop" onclick="stopProtocol()" disabled>Stop</button>
-      <button id="btn-chat" onclick="toggleChat()">AI Assistant</button>
-    </div>
     <span id="protocol-name">untitled</span>
     <div class="status-area">
       <div class="status-dot" id="status-indicator"></div>
@@ -182,22 +168,55 @@
   </div>
 
   <div class="main">
+    <!-- Deck visualization -->
     <div class="deck-panel">
       <div id="kanvas"></div>
     </div>
-    <div class="resize-handle" id="resize-handle"></div>
+
+    <div class="resize-handle" id="resize-handle-left"></div>
+
+    <!-- Editor + Console -->
     <div class="editor-panel">
+      <!-- Protocol bar: New, Save, tabs -->
       <div class="protocol-bar">
+        <button class="btn" onclick="newProtocol()">New</button>
+        <button class="btn" onclick="saveCurrentProtocol()">Save</button>
+        <span style="width:1px;height:18px;background:#444;margin:0 4px"></span>
         <button class="protocol-item" onclick="newProtocol()" style="color:#e94560;border-color:#e94560">+</button>
         <div id="protocol-list" style="display:contents"></div>
       </div>
+
+      <!-- Monaco editor -->
       <div id="editor-container"></div>
+
+      <!-- Run/Stop bar -->
+      <div class="run-bar">
+        <button class="btn primary" id="btn-run" onclick="runProtocol()" disabled>Run</button>
+        <button class="btn danger" id="btn-stop" onclick="stopProtocol()" disabled>Stop</button>
+      </div>
+
+      <!-- Console -->
       <div class="console-area">
         <div class="console-header">
           <span>Console</span>
-          <button onclick="clearConsole()">Clear</button>
+          <button class="btn" onclick="clearConsole()" style="padding:1px 6px">Clear</button>
         </div>
         <div id="console-output"></div>
+      </div>
+    </div>
+
+    <div class="resize-handle" id="resize-handle-right"></div>
+
+    <!-- AI Assistant chat (always visible) -->
+    <div class="chat-panel" id="chat-panel">
+      <div class="chat-header">
+        <span>AI Assistant</span>
+        <button class="btn" onclick="clearChat()" style="padding:1px 6px">Clear</button>
+      </div>
+      <div id="chat-messages"></div>
+      <div class="chat-input-area">
+        <textarea id="chat-input" rows="2" placeholder="Describe your protocol..."></textarea>
+        <button onclick="sendChat()">Send</button>
       </div>
     </div>
   </div>
@@ -262,42 +281,45 @@
       }, 500);
     }
 
-    // Resize handle
-    const resizeHandle = document.getElementById('resize-handle');
-    const editorPanel = document.querySelector('.editor-panel');
-    let isResizing = false;
-    resizeHandle.addEventListener('mousedown', () => {
-      isResizing = true;
-      document.body.style.cursor = 'col-resize';
-      document.body.style.userSelect = 'none';
-    });
-    document.addEventListener('mousemove', (e) => {
-      if (!isResizing) return;
-      const newWidth = document.body.clientWidth - e.clientX;
-      editorPanel.style.width = Math.max(250, Math.min(900, newWidth)) + 'px';
-    });
-    document.addEventListener('mouseup', () => {
-      isResizing = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    });
-  </script>
+    // Resize handles for both panel dividers
+    function setupResize(handleId, getTarget, getWidth) {
+      const handle = document.getElementById(handleId);
+      let active = false;
+      handle.addEventListener('mousedown', () => {
+        active = true;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+      });
+      document.addEventListener('mousemove', (e) => {
+        if (!active) return;
+        const target = getTarget();
+        const w = getWidth(e);
+        target.style.width = Math.max(200, Math.min(900, w)) + 'px';
+      });
+      document.addEventListener('mouseup', () => {
+        if (active) {
+          active = false;
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+        }
+      });
+    }
 
-  <!-- AI Assistant chat panel -->
-  <div id="chat-panel">
-    <div class="chat-header">
-      <span>AI Assistant</span>
-      <div>
-        <button onclick="clearChat()" title="Clear history">Clear</button>
-        <button onclick="toggleChat()" title="Close">x</button>
-      </div>
-    </div>
-    <div id="chat-messages"></div>
-    <div class="chat-input-area">
-      <textarea id="chat-input" rows="2" placeholder="Describe your protocol in natural language..."></textarea>
-      <button onclick="sendChat()">Send</button>
-    </div>
-  </div>
+    // Left handle resizes editor panel (measured from right edge of deck)
+    setupResize('resize-handle-left',
+      () => document.querySelector('.editor-panel'),
+      (e) => {
+        const chat = document.querySelector('.chat-panel');
+        return document.body.clientWidth - e.clientX - chat.offsetWidth - 8;
+      }
+    );
+
+    // Right handle resizes chat panel (measured from right edge)
+    setupResize('resize-handle-right',
+      () => document.querySelector('.chat-panel'),
+      (e) => document.body.clientWidth - e.clientX
+    );
+  </script>
 
   <!-- Konva rendering layer from pylabrobot visualizer -->
   <script src="/static/lib.js"></script>

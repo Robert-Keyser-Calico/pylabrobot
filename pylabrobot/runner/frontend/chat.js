@@ -1,14 +1,5 @@
 /* AI Assistant chat panel for the Protocol Runner. */
 
-let chatVisible = false;
-
-function toggleChat() {
-  chatVisible = !chatVisible;
-  const panel = document.getElementById("chat-panel");
-  panel.style.display = chatVisible ? "flex" : "none";
-  document.getElementById("btn-chat").classList.toggle("active", chatVisible);
-}
-
 function appendChatMessage(role, content) {
   const el = document.getElementById("chat-messages");
   const msg = document.createElement("div");
