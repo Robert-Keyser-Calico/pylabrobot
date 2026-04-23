@@ -60,10 +60,11 @@ async function sendChat() {
   appendChatMessage("assistant", "Thinking...");
 
   try {
+    const editorCode = editor ? editor.getValue() : "";
     const resp = await fetch("/api/assistant/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: message }),
+      body: JSON.stringify({ message: message, editor_code: editorCode }),
     });
 
     // Remove "Thinking..." placeholder

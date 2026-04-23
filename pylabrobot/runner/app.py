@@ -33,12 +33,13 @@ class RunProtocolRequest(BaseModel):
 
 class ChatRequest(BaseModel):
   message: str
+  editor_code: Optional[str] = None
 
 
 def create_app(
   vertex_project: Optional[str] = None,
   vertex_location: str = "us-central1",
-  vertex_model: str = "gemini-2.0-flash",
+  vertex_model: str = "gemini-2.0-flash-001",
 ) -> FastAPI:
   app = FastAPI(title="PyLabRobot Runner")
 
@@ -155,7 +156,7 @@ def create_app(
   @app.post("/api/assistant/chat")
   async def assistant_chat(body: ChatRequest):
     try:
-      code = await assistant.chat(body.message)
+      code = await assistant.chat(body.message, editor_code=body.editor_code)
       return {"code": code}
     except Exception as e:
       raise HTTPException(status_code=500, detail=str(e))

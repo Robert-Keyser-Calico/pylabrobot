@@ -143,8 +143,13 @@ class Assistant:
       deck_layout=deck_layout,
     )
 
-  async def chat(self, user_message: str) -> str:
-    """Send a message and get a code response."""
+  async def chat(self, user_message: str, editor_code: Optional[str] = None) -> str:
+    """Send a message and get a code response.
+
+    Args:
+      user_message: Natural language request from the user.
+      editor_code: Current contents of the code editor, used as context.
+    """
     import asyncio
 
     self._history.append(ChatMessage(role="user", content=user_message))
@@ -153,6 +158,14 @@ class Assistant:
     system_prompt = self._build_system_prompt()
 
     contents = [system_prompt]
+
+    if editor_code:
+      contents.append(
+        f"The user's current script in the editor is:\n```python\n{editor_code}\n```\n"
+        "Use this as context. If the user asks to modify it, return the complete "
+        "updated script. If they ask for something new, generate a complete script."
+      )
+
     for msg in self._history:
       contents.append(f"{msg.role}: {msg.content}")
 
