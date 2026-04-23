@@ -1,7 +1,12 @@
 """Protocol execution engine.
 
-Discovers and runs `async def run(device)` in user protocol code.
-Captures stdout/stderr and streams to websocket clients.
+Executes notebook-style scripts that define a deck layout and a
+run(device) function. The script namespace is executed to build the
+deck, then a simulated device is created from it and run() is called.
+
+Script structure:
+  1. Imports and deck setup (top-level code)
+  2. async def run(device): — the protocol entry point
 """
 
 from __future__ import annotations
@@ -12,7 +17,7 @@ import io
 import logging
 import traceback
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -26,13 +31,19 @@ class ExecutionState(str, Enum):
 
 
 class ProtocolExecutor:
-  """Executes protocol scripts in a background asyncio task."""
+  """Executes notebook-style protocol scripts."""
 
-  def __init__(self, on_output: Optional[Callable[[str, str], Any]] = None):
+  def __init__(
+    self,
+    on_output: Optional[Callable[[str, str], Any]] = None,
+    on_deck_ready: Optional[Callable[[Any, Any], Any]] = None,
+  ):
     self._state = ExecutionState.IDLE
     self._task: Optional[asyncio.Task] = None
     self._error: Optional[str] = None
     self._on_output = on_output
+    self._on_deck_ready = on_deck_ready
+    self._device: Optional[Any] = None
 
   @property
   def state(self) -> ExecutionState:
@@ -49,31 +60,80 @@ class ProtocolExecutor:
       except Exception:
         pass
 
-  async def run(self, code: str, device: Any) -> None:
+  async def run(self, code: str) -> None:
+    """Execute a notebook-style protocol script.
+
+    The script should define:
+      - A ``deck`` variable (Deck resource with carriers and labware)
+      - An ``async def run(device):`` function
+
+    A simulated device is created from the deck, set up, and passed to run().
+    """
     if self._state == ExecutionState.RUNNING:
       raise RuntimeError("A protocol is already running")
 
     self._state = ExecutionState.RUNNING
     self._error = None
-    self._emit("--- Protocol started ---", "info")
+    self._device = None
+    self._emit("--- Executing script ---", "info")
 
     self._task = asyncio.current_task()
 
     try:
+      # Phase 1: Execute the full script to build the namespace
+      # (imports, deck setup, function definitions)
       namespace: Dict[str, Any] = {}
-      exec(compile(code, "<protocol>", "exec"), namespace)
-
-      run_fn = namespace.get("run")
-      if run_fn is None:
-        raise ValueError("Protocol must define 'async def run(device):'")
-      if not asyncio.iscoroutinefunction(run_fn):
-        raise ValueError("'run' must be an async function (async def run(device):)")
 
       stdout_capture = _StreamCapture(lambda line: self._emit(line, "stdout"))
       stderr_capture = _StreamCapture(lambda line: self._emit(line, "stderr"))
 
       with contextlib.redirect_stdout(stdout_capture), contextlib.redirect_stderr(stderr_capture):
+        exec(compile(code, "<protocol>", "exec"), namespace)
+
+      # Phase 2: Find the deck and build a simulated device
+      from pylabrobot.resources.deck import Deck
+
+      deck = None
+      for val in namespace.values():
+        if isinstance(val, Deck):
+          deck = val
+          break
+
+      if deck is None:
+        raise ValueError(
+          "Script must create a Deck variable.\n"
+          "Example: deck = EVO150Deck()"
+        )
+
+      run_fn = namespace.get("run")
+      if run_fn is None:
+        raise ValueError(
+          "Script must define 'async def run(device):'.\n"
+          "This function receives the simulated device."
+        )
+      if not asyncio.iscoroutinefunction(run_fn):
+        raise ValueError("'run' must be an async function (async def run(device):)")
+
+      self._emit("Deck configured, setting up simulated device...", "info")
+
+      from pylabrobot.runner.simulation import create_simulated_device
+
+      device = create_simulated_device(deck, num_channels=8, has_arm=True)
+      await device.setup()
+      self._device = device
+
+      # Notify the app about the new deck so visualization updates
+      if self._on_deck_ready:
+        self._on_deck_ready(deck, device)
+
+      self._emit("Device ready, running protocol...", "info")
+
+      # Phase 3: Run the protocol
+      with contextlib.redirect_stdout(stdout_capture), contextlib.redirect_stderr(stderr_capture):
         await run_fn(device)
+
+      stdout_capture.flush()
+      stderr_capture.flush()
 
       self._state = ExecutionState.COMPLETED
       self._emit("--- Protocol completed ---", "info")
@@ -90,6 +150,11 @@ class ProtocolExecutor:
       self._emit(f"--- Protocol error: {e} ---", "stderr")
 
     finally:
+      if self._device is not None:
+        try:
+          await self._device.stop()
+        except Exception:
+          pass
       self._task = None
 
   def stop(self) -> None:

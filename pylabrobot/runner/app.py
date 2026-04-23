@@ -36,17 +36,20 @@ class ChatRequest(BaseModel):
 
 
 def create_app(
-  root_resource: Resource,
-  device: Any = None,
   vertex_project: Optional[str] = None,
   vertex_location: str = "us-central1",
   vertex_model: str = "gemini-2.0-flash",
 ) -> FastAPI:
   app = FastAPI(title="PyLabRobot Runner")
-  bridge = DeckBridge(root_resource)
+
+  # Start with an empty deck — populated when a script runs
+  from pylabrobot.resources.tecan.tecan_decks import EVO150Deck
+
+  current_deck = EVO150Deck()
+  bridge = DeckBridge(current_deck)
   store = ProtocolStore()
   assistant = Assistant(
-    root_resource=root_resource,
+    root_resource=current_deck,
     num_channels=8,
     project=vertex_project,
     location=vertex_location,
@@ -56,13 +59,20 @@ def create_app(
   def on_output(text: str, stream: str) -> None:
     msg = bridge._make_event("console_output", {"text": text, "stream": stream})
     import asyncio
+
     try:
       loop = asyncio.get_running_loop()
       loop.create_task(bridge._broadcast(msg))
     except RuntimeError:
       pass
 
-  executor = ProtocolExecutor(on_output=on_output)
+  def on_deck_ready(deck: Any, device: Any) -> None:
+    nonlocal current_deck
+    current_deck = deck
+    bridge.set_root(deck)
+    assistant._root = deck
+
+  executor = ProtocolExecutor(on_output=on_output, on_deck_ready=on_deck_ready)
 
   app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
@@ -75,7 +85,7 @@ def create_app(
   async def get_deck():
     from pylabrobot.runner.deck_bridge import _serialize_with_methods
 
-    return _serialize_with_methods(root_resource)
+    return _serialize_with_methods(current_deck)
 
   @app.get("/api/deck/state")
   async def get_deck_state():
@@ -88,7 +98,7 @@ def create_app(
       for child in resource.children:
         collect(child)
 
-    collect(root_resource)
+    collect(current_deck)
     return state
 
   # ============== Protocol CRUD ==============
@@ -125,12 +135,10 @@ def create_app(
   async def run_protocol(body: RunProtocolRequest):
     if executor.state == ExecutionState.RUNNING:
       raise HTTPException(status_code=409, detail="A protocol is already running")
-    if device is None:
-      raise HTTPException(status_code=400, detail="No device configured")
 
     import asyncio
 
-    asyncio.create_task(executor.run(body.code, device))
+    asyncio.create_task(executor.run(body.code))
     return {"status": "started"}
 
   @app.get("/api/run/status")

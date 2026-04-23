@@ -62,6 +62,37 @@ class DeckBridge:
     for child in resource.children:
       self._register_state_callbacks(child)
 
+  def set_root(self, root: Resource) -> None:
+    """Switch to a new root resource and send it to all clients."""
+    self._root = root
+    root.register_did_assign_resource_callback(self._on_resource_assigned)
+    root.register_did_unassign_resource_callback(self._on_resource_unassigned)
+    self._register_state_callbacks(root)
+
+    msg = self._make_event(
+      "set_root_resource",
+      {"resource": _serialize_with_methods(root)},
+    )
+    import asyncio
+
+    try:
+      loop = asyncio.get_running_loop()
+      loop.create_task(self._broadcast(msg))
+      state: Dict[str, Any] = {}
+
+      def collect(r: Resource) -> None:
+        s = r.serialize_state()
+        if s is not None:
+          state[r.name] = s
+        for child in r.children:
+          collect(child)
+
+      collect(root)
+      state_msg = self._make_event("set_state", state)
+      loop.create_task(self._broadcast(state_msg))
+    except RuntimeError:
+      pass
+
   def _generate_id(self) -> str:
     self._id += 1
     return str(self._id)
