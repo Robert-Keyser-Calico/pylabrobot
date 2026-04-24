@@ -148,11 +148,6 @@ class ProtocolExecutor:
       self._emit(f"--- Protocol error: {e} ---", "stderr")
 
     finally:
-      if self._device is not None and not managed_device:
-        try:
-          await self._device.stop()
-        except Exception:
-          pass
       self._task = None
 
   def stop(self) -> None:

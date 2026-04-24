@@ -377,6 +377,8 @@
             clearInterval(poll);
             document.getElementById("btn-run").disabled = false;
             document.getElementById("btn-stop").disabled = true;
+            if (typeof fetchChannelState === 'function') fetchChannelState();
+            if (typeof fetchArmState === 'function') fetchArmState();
           }
         } catch (e) {
           clearInterval(poll);

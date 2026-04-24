@@ -407,10 +407,14 @@ def create_app(
   # State broadcasting during execution
   async def _broadcast_state_loop() -> None:
     """Poll channel and arm state every 500ms and broadcast to WebSocket clients."""
+    last_state = ExecutionState.IDLE
     while True:
       try:
         dev = current_device or (device_mgr.device if device_mgr.is_connected else None)
-        if dev is not None and executor.state == ExecutionState.RUNNING:
+        is_running = executor.state == ExecutionState.RUNNING
+        just_finished = (last_state == ExecutionState.RUNNING and not is_running)
+
+        if dev is not None and (is_running or just_finished):
           ch_data = get_channel_states(dev)
           ch_msg = bridge._make_event("channel_state", ch_data)
           await bridge._broadcast(ch_msg)
@@ -418,6 +422,8 @@ def create_app(
           arm_data = await get_arm_states(dev)
           arm_msg = bridge._make_event("arm_state", {"arms": arm_data})
           await bridge._broadcast(arm_msg)
+
+        last_state = executor.state
       except Exception:
         pass
       await asyncio.sleep(0.5)
