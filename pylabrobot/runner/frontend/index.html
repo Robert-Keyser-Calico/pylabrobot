@@ -40,9 +40,64 @@
 
     /* Deck panel (left) */
     .deck-panel {
-      flex: 1; min-width: 250px; position: relative; overflow: hidden;
+      flex: 1; min-width: 250px; display: flex; flex-direction: column;
+      overflow: hidden;
     }
-    #kanvas { width: 100%; height: 100%; background: #f8f8f8; }
+    #kanvas { flex: 1; width: 100%; background: #f8f8f8; }
+
+    /* Channel state panel */
+    .channel-panel {
+      height: 110px; border-top: 1px solid #333; background: #1a1a2e;
+      display: flex; flex-direction: column; flex-shrink: 0;
+    }
+    .panel-label {
+      padding: 3px 10px; font-size: 10px; color: #e94560;
+      text-transform: uppercase; letter-spacing: 1px;
+      background: #16213e; border-bottom: 1px solid #333;
+    }
+    #channel-state {
+      flex: 1; display: flex; align-items: stretch; gap: 2px;
+      padding: 6px 10px; overflow-x: auto;
+    }
+    .channel-col {
+      display: flex; flex-direction: column; align-items: center;
+      min-width: 42px; flex: 1;
+    }
+    .channel-label { font-size: 9px; color: #888; margin-bottom: 2px; }
+    .channel-tube {
+      width: 18px; flex: 1; background: #252540; border-radius: 3px 3px 0 0;
+      position: relative; overflow: hidden; border: 1px solid #444;
+    }
+    .channel-fill {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      transition: height 0.3s ease;
+    }
+    .channel-tip {
+      width: 0; height: 0;
+      border-left: 9px solid transparent;
+      border-right: 9px solid transparent;
+      border-bottom: 8px solid #444;
+      transform: rotate(180deg);
+    }
+    .channel-vol { font-size: 9px; color: #aaa; margin-top: 1px; white-space: nowrap; }
+    .channel-max { font-size: 8px; color: #555; white-space: nowrap; }
+
+    /* Arm state panel */
+    .arm-panel {
+      height: 32px; border-top: 1px solid #333; background: #1a1a2e;
+      display: flex; align-items: center; flex-shrink: 0;
+    }
+    #arm-state {
+      display: flex; align-items: center; gap: 8px; padding: 0 10px;
+      flex: 1; overflow-x: auto;
+    }
+    .arm-row { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+    .arm-name { color: #e94560; font-weight: bold; font-size: 10px; text-transform: uppercase; }
+    .arm-coord { color: #888; font-size: 11px; }
+    .arm-coord b { color: #ccc; margin-left: 2px; }
+    .arm-holding { color: #4ec9b0; font-size: 10px; }
+    .arm-gripper { color: #e9c46a; font-size: 10px; padding: 1px 5px; border: 1px solid #e9c46a; border-radius: 3px; }
+    .arm-empty { color: #555; font-size: 11px; font-style: italic; }
 
     /* Resize handles */
     .resize-handle { width: 4px; cursor: col-resize; background: #333; flex-shrink: 0; }
@@ -171,9 +226,17 @@
   </div>
 
   <div class="main">
-    <!-- Deck visualization -->
+    <!-- Deck visualization + state panels -->
     <div class="deck-panel">
       <div id="kanvas"></div>
+      <div class="channel-panel">
+        <div class="panel-label">Channels</div>
+        <div id="channel-state"></div>
+      </div>
+      <div class="arm-panel">
+        <div class="panel-label" style="border-bottom:none;padding:0 10px">Arm</div>
+        <div id="arm-state"><span class="arm-empty">—</span></div>
+      </div>
     </div>
 
     <div class="resize-handle" id="resize-handle-left"></div>
@@ -367,6 +430,8 @@
   <!-- Monaco Editor loader -->
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.50.0/min/vs/loader.js"></script>
   <!-- Runner modules -->
+  <script src="/static/channels.js"></script>
+  <script src="/static/arms.js"></script>
   <script src="/static/editor.js"></script>
   <script src="/static/chat.js"></script>
   <script src="/static/app.js"></script>

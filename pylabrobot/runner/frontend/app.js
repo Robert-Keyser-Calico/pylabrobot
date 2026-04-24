@@ -77,11 +77,18 @@ async function processCentralEvent(event, data) {
       appendConsole(data.text, data.stream || "stdout");
       break;
 
+    case "channel_state":
+      if (typeof handleChannelState === 'function') handleChannelState(data);
+      break;
+
+    case "arm_state":
+      if (typeof handleArmState === 'function') handleArmState(data);
+      break;
+
     case "execution_started":
     case "execution_completed":
     case "execution_error":
     case "execution_stopped":
-      // Phase 3: execution status updates
       break;
 
     default:
@@ -132,6 +139,8 @@ function connectWebSocket() {
     updateStatusLabel("loaded");
     const runBtn = document.getElementById("btn-run");
     if (runBtn) runBtn.disabled = false;
+    if (typeof fetchChannelState === 'function') fetchChannelState();
+    if (typeof fetchArmState === 'function') fetchArmState();
   };
 
   webSocket.onerror = function (err) {

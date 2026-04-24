@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -17,6 +18,7 @@ from pylabrobot.runner.assistant import Assistant
 from pylabrobot.runner.deck_bridge import DeckBridge
 from pylabrobot.runner.device_manager import ConnectionState, DeviceManager, DeviceMode
 from pylabrobot.runner.executor import ExecutionState, ProtocolExecutor
+from pylabrobot.runner.state_queries import get_arm_states, get_channel_states
 from pylabrobot.runner.protocol_store import STARTER_TEMPLATE, ProtocolStore
 
 logger = logging.getLogger(__name__)
@@ -120,6 +122,48 @@ class DeviceConfigResponse(BaseModel):
   config: Dict[str, Any]
 
 
+class ChannelInfo(BaseModel):
+  index: int
+  has_tip: bool
+  tip: Optional[Dict[str, Any]] = None
+  volume: float = 0
+  max_volume: float = 0
+  pending_volume: float = 0
+
+
+class ChannelsResponse(BaseModel):
+  num_channels: int
+  channels: List[ChannelInfo]
+
+
+class ArmPosition(BaseModel):
+  x: float = 0
+  y: float = 0
+  z: float = 0
+
+
+class ArmRotation(BaseModel):
+  x: float = 0
+  y: float = 0
+  z: float = 0
+
+
+class ArmInfo(BaseModel):
+  name: str
+  type: str
+  available: bool = True
+  position: ArmPosition = ArmPosition()
+  rotation: ArmRotation = ArmRotation()
+  holding: bool = False
+  held_resource: Optional[str] = None
+  gripper_width: Optional[float] = None
+  gripper_closed: Optional[bool] = None
+
+
+class ArmsResponse(BaseModel):
+  arms: List[ArmInfo]
+
+
 # ============== App Factory ==============
 
 
@@ -144,9 +188,11 @@ def create_app(
   from pylabrobot.resources.tecan.tecan_decks import EVO150Deck
 
   current_deck = EVO150Deck()
+  current_device: Optional[Any] = None
   bridge = DeckBridge(current_deck)
   store = ProtocolStore()
   device_mgr = DeviceManager()
+  state_polling_task: Optional[asyncio.Task] = None
 
   if google_api_key:
     logger.info("AI Assistant: using Google AI API key")
@@ -175,8 +221,9 @@ def create_app(
       pass
 
   def on_deck_ready(deck: Any, device: Any) -> None:
-    nonlocal current_deck
+    nonlocal current_deck, current_device
     current_deck = deck
+    current_device = device
     bridge.set_root(deck)
     assistant._root = deck
     device_mgr.set_deck(deck)
@@ -334,6 +381,51 @@ def create_app(
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     device_mgr.set_hardware_config(updates)
     return DeviceConfigResponse(config=device_mgr._hardware_config)
+
+  # ============== System State ==============
+
+  @app.get("/api/channels", tags=["System State"], response_model=ChannelsResponse,
+           summary="Get channel state",
+           description="Returns tip presence, volume, and tip properties for all channels.")
+  async def get_channels():
+    dev = current_device or (device_mgr.device if device_mgr.is_connected else None)
+    if dev is None:
+      return ChannelsResponse(num_channels=0, channels=[])
+    data = get_channel_states(dev)
+    return ChannelsResponse(**data)
+
+  @app.get("/api/arms", tags=["System State"], response_model=ArmsResponse,
+           summary="Get arm positions",
+           description="Returns position, rotation, and grip state for all configured arms.")
+  async def get_arms():
+    dev = current_device or (device_mgr.device if device_mgr.is_connected else None)
+    if dev is None:
+      return ArmsResponse(arms=[])
+    arm_data = await get_arm_states(dev)
+    return ArmsResponse(arms=[ArmInfo(**a) for a in arm_data])
+
+  # State broadcasting during execution
+  async def _broadcast_state_loop() -> None:
+    """Poll channel and arm state every 500ms and broadcast to WebSocket clients."""
+    while True:
+      try:
+        dev = current_device or (device_mgr.device if device_mgr.is_connected else None)
+        if dev is not None and executor.state == ExecutionState.RUNNING:
+          ch_data = get_channel_states(dev)
+          ch_msg = bridge._make_event("channel_state", ch_data)
+          await bridge._broadcast(ch_msg)
+
+          arm_data = await get_arm_states(dev)
+          arm_msg = bridge._make_event("arm_state", {"arms": arm_data})
+          await bridge._broadcast(arm_msg)
+      except Exception:
+        pass
+      await asyncio.sleep(0.5)
+
+  @app.on_event("startup")
+  async def start_state_broadcaster():
+    nonlocal state_polling_task
+    state_polling_task = asyncio.create_task(_broadcast_state_loop())
 
   # ============== AI Assistant ==============
 

@@ -334,6 +334,59 @@ class TestDeviceManagement:
     client.post("/api/device/disconnect")
 
 
+# ============== System State ==============
+
+
+class TestSystemState:
+  def test_channels_empty_initially(self, client):
+    resp = client.get("/api/channels")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["num_channels"] == 0
+    assert data["channels"] == []
+
+  def test_channels_after_run(self, client):
+    client.post("/api/run", json={"code": SIMPLE_PROTOCOL})
+    import time
+    for _ in range(50):
+      if client.get("/api/run/status").json()["state"] != "running":
+        break
+      time.sleep(0.1)
+
+    resp = client.get("/api/channels")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["num_channels"] == 8
+    assert len(data["channels"]) == 8
+    for ch in data["channels"]:
+      assert "index" in ch
+      assert "has_tip" in ch
+      assert "volume" in ch
+
+  def test_arms_empty_initially(self, client):
+    resp = client.get("/api/arms")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["arms"] == []
+
+  def test_arms_after_run(self, client):
+    client.post("/api/run", json={"code": SIMPLE_PROTOCOL})
+    import time
+    for _ in range(50):
+      if client.get("/api/run/status").json()["state"] != "running":
+        break
+      time.sleep(0.1)
+
+    resp = client.get("/api/arms")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["arms"]) == 1
+    arm = data["arms"][0]
+    assert "position" in arm
+    assert "x" in arm["position"]
+    assert "holding" in arm
+
+
 # ============== WebSocket ==============
 
 
