@@ -207,6 +207,8 @@ def create_app(
            summary="Get all resource states",
            description="Returns runtime state for every resource (volumes, tip presence, etc.).")
   async def get_deck_state():
+    from pylabrobot.runner.deck_bridge import _sanitize_floats
+
     state: Dict[str, Any] = {}
 
     def collect(resource: Resource) -> None:
@@ -217,7 +219,7 @@ def create_app(
         collect(child)
 
     collect(current_deck)
-    return state
+    return _sanitize_floats(state)
 
   # ============== Protocols ==============
 
