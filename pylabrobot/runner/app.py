@@ -5,12 +5,12 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from pylabrobot.resources import Resource
 from pylabrobot.runner.assistant import Assistant
@@ -23,17 +23,67 @@ logger = logging.getLogger(__name__)
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend")
 
 
+# ============== Request / Response Models ==============
+
+
 class SaveProtocolRequest(BaseModel):
-  code: str
+  code: str = Field(..., description="Python protocol source code")
 
 
 class RunProtocolRequest(BaseModel):
-  code: str
+  code: str = Field(..., description="Python protocol source code to execute")
 
 
 class ChatRequest(BaseModel):
-  message: str
-  editor_code: Optional[str] = None
+  message: str = Field(..., description="Natural language request")
+  editor_code: Optional[str] = Field(None, description="Current editor contents for context")
+
+
+class ProtocolListResponse(BaseModel):
+  protocols: List[str] = Field(..., description="List of saved protocol names")
+
+
+class ProtocolResponse(BaseModel):
+  name: str
+  code: str
+
+
+class SaveResponse(BaseModel):
+  name: str
+  saved: bool
+
+
+class DeleteResponse(BaseModel):
+  name: str
+  deleted: bool
+
+
+class StarterResponse(BaseModel):
+  code: str = Field(..., description="Starter template code")
+
+
+class RunResponse(BaseModel):
+  status: str = Field(..., description="'started' if execution began")
+
+
+class RunStatusResponse(BaseModel):
+  state: str = Field(..., description="idle, running, completed, error, or stopped")
+  error: Optional[str] = Field(None, description="Error message if state is 'error'")
+
+
+class StopResponse(BaseModel):
+  status: str = Field(..., description="'stopping' if cancellation requested")
+
+
+class ChatResponse(BaseModel):
+  code: str = Field(..., description="Generated Python code")
+
+
+class ClearResponse(BaseModel):
+  cleared: bool
+
+
+# ============== App Factory ==============
 
 
 def create_app(
@@ -42,14 +92,24 @@ def create_app(
   vertex_location: str = "us-central1",
   vertex_model: str = "gemini-2.0-flash",
 ) -> FastAPI:
-  app = FastAPI(title="PyLabRobot Runner")
+  app = FastAPI(
+    title="PyLabRobot Runner",
+    description=(
+      "Protocol execution and deck visualization for PyLabRobot. "
+      "Write protocols, run them in simulation or on real hardware, "
+      "and observe deck state changes in real-time via WebSocket."
+    ),
+    version="0.1.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+  )
 
-  # Start with an empty deck — populated when a script runs
   from pylabrobot.resources.tecan.tecan_decks import EVO150Deck
 
   current_deck = EVO150Deck()
   bridge = DeckBridge(current_deck)
   store = ProtocolStore()
+
   if google_api_key:
     logger.info("AI Assistant: using Google AI API key")
   elif vertex_project:
@@ -86,18 +146,27 @@ def create_app(
 
   app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
-  @app.get("/", response_class=HTMLResponse)
+  # ============== UI ==============
+
+  @app.get("/", response_class=HTMLResponse, include_in_schema=False)
   async def index():
     with open(os.path.join(FRONTEND_DIR, "index.html"), "r", encoding="utf-8") as f:
       return f.read()
 
-  @app.get("/api/deck")
+  # ============== Deck ==============
+
+  @app.get("/api/deck", tags=["Deck"],
+           summary="Get full deck resource tree",
+           description="Returns the serialized resource tree including all carriers, "
+           "plates, tip racks, and their positions.")
   async def get_deck():
     from pylabrobot.runner.deck_bridge import _serialize_with_methods
 
     return _serialize_with_methods(current_deck)
 
-  @app.get("/api/deck/state")
+  @app.get("/api/deck/state", tags=["Deck"],
+           summary="Get all resource states",
+           description="Returns runtime state for every resource (volumes, tip presence, etc.).")
   async def get_deck_state():
     state: Dict[str, Any] = {}
 
@@ -111,37 +180,48 @@ def create_app(
     collect(current_deck)
     return state
 
-  # ============== Protocol CRUD ==============
+  # ============== Protocols ==============
 
-  @app.get("/api/protocols")
+  @app.get("/api/protocols", tags=["Protocols"], response_model=ProtocolListResponse,
+           summary="List saved protocols")
   async def list_protocols():
-    return {"protocols": store.list_protocols()}
+    return ProtocolListResponse(protocols=store.list_protocols())
 
-  @app.get("/api/protocols/_starter")
+  @app.get("/api/protocols/_starter", tags=["Protocols"], response_model=StarterResponse,
+           summary="Get starter template",
+           description="Returns a starter protocol template with deck setup and a sample run() function.")
   async def get_starter():
-    return {"code": STARTER_TEMPLATE}
+    return StarterResponse(code=STARTER_TEMPLATE)
 
-  @app.get("/api/protocols/{name}")
+  @app.get("/api/protocols/{name}", tags=["Protocols"], response_model=ProtocolResponse,
+           summary="Load a saved protocol")
   async def get_protocol(name: str):
     if not store.exists(name):
       raise HTTPException(status_code=404, detail=f"Protocol '{name}' not found")
-    return {"name": name, "code": store.load(name)}
+    return ProtocolResponse(name=name, code=store.load(name))
 
-  @app.post("/api/protocols/{name}")
+  @app.post("/api/protocols/{name}", tags=["Protocols"], response_model=SaveResponse,
+            summary="Save a protocol",
+            description="Save protocol source code to disk. Creates or overwrites.")
   async def save_protocol(name: str, body: SaveProtocolRequest):
     store.save(name, body.code)
-    return {"name": name, "saved": True}
+    return SaveResponse(name=name, saved=True)
 
-  @app.delete("/api/protocols/{name}")
+  @app.delete("/api/protocols/{name}", tags=["Protocols"], response_model=DeleteResponse,
+              summary="Delete a saved protocol")
   async def delete_protocol(name: str):
     if not store.exists(name):
       raise HTTPException(status_code=404, detail=f"Protocol '{name}' not found")
     store.delete(name)
-    return {"name": name, "deleted": True}
+    return DeleteResponse(name=name, deleted=True)
 
   # ============== Execution ==============
 
-  @app.post("/api/run")
+  @app.post("/api/run", tags=["Execution"], response_model=RunResponse,
+            summary="Run a protocol",
+            description="Execute protocol code in simulation. The script must define a `deck` "
+            "variable and an `async def run(device):` function. The deck visualization "
+            "updates in real-time via WebSocket events.")
   async def run_protocol(body: RunProtocolRequest):
     if executor.state == ExecutionState.RUNNING:
       raise HTTPException(status_code=409, detail="A protocol is already running")
@@ -149,36 +229,56 @@ def create_app(
     import asyncio
 
     asyncio.create_task(executor.run(body.code))
-    return {"status": "started"}
+    return RunResponse(status="started")
 
-  @app.get("/api/run/status")
+  @app.get("/api/run/status", tags=["Execution"], response_model=RunStatusResponse,
+           summary="Get execution status",
+           description="Returns the current execution state and any error message.")
   async def run_status():
-    return {"state": executor.state.value, "error": executor.error}
+    return RunStatusResponse(state=executor.state.value, error=executor.error)
 
-  @app.post("/api/run/stop")
+  @app.post("/api/run/stop", tags=["Execution"], response_model=StopResponse,
+            summary="Stop running protocol",
+            description="Cancel the currently running protocol. The protocol receives "
+            "an asyncio.CancelledError.")
   async def run_stop():
     executor.stop()
-    return {"status": "stopping"}
+    return StopResponse(status="stopping")
 
-  # ============== Assistant ==============
+  # ============== AI Assistant ==============
 
-  @app.post("/api/assistant/chat")
+  @app.post("/api/assistant/chat", tags=["AI Assistant"], response_model=ChatResponse,
+            summary="Generate protocol code from natural language",
+            description="Send a natural language description and optionally the current "
+            "editor contents. Returns generated Python protocol code.")
   async def assistant_chat(body: ChatRequest):
     try:
       code = await assistant.chat(body.message, editor_code=body.editor_code)
-      return {"code": code}
+      return ChatResponse(code=code)
     except Exception as e:
       raise HTTPException(status_code=500, detail=str(e))
 
-  @app.post("/api/assistant/clear")
+  @app.post("/api/assistant/clear", tags=["AI Assistant"], response_model=ClearResponse,
+            summary="Clear conversation history")
   async def assistant_clear():
     assistant.clear_history()
-    return {"cleared": True}
+    return ClearResponse(cleared=True)
 
   # ============== WebSocket ==============
 
   @app.websocket("/ws")
   async def websocket_endpoint(ws: WebSocket):
+    """Real-time deck state updates.
+
+    Events sent to client:
+    - `set_root_resource` — full resource tree (on connect)
+    - `set_state` — resource states (volumes, tips)
+    - `resource_assigned` — new resource added to tree
+    - `resource_unassigned` — resource removed from tree
+    - `console_output` — protocol stdout/stderr output
+
+    Client should send `{"event": "ready"}` after connecting to receive initial state.
+    """
     await ws.accept()
     await bridge.add_client(ws)
     try:

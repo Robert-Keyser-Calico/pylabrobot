@@ -27,7 +27,7 @@ def main():
 
   parser = argparse.ArgumentParser(description="PyLabRobot Protocol Runner")
   parser.add_argument("--port", type=int, default=5051, help="Server port (default: 5051)")
-  parser.add_argument("--host", type=str, default="127.0.0.1", help="Server host")
+  parser.add_argument("--host", type=str, default="0.0.0.0", help="Server host (0.0.0.0 for network access)")
   parser.add_argument("--no-browser", action="store_true", help="Don't open browser on start")
   parser.add_argument("--lib", type=str, action="append", default=[], help="Add directory to Python path (for local labware imports)")
   parser.add_argument("--vertex-project", type=str, default=None, help="GCP project for Vertex AI")
