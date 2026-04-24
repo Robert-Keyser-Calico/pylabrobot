@@ -161,7 +161,10 @@
   <div class="header">
     <h1>PyLabRobot Runner</h1>
     <span id="protocol-name">untitled</span>
-    <div class="status-area">
+    <div class="status-area" style="gap: 12px;">
+      <span style="font-size:11px;color:#666">Device:</span>
+      <span class="status-text" id="device-status" style="cursor:pointer" onclick="toggleDeviceConnect()">disconnected</span>
+      <span style="font-size:11px;color:#444">|</span>
       <div class="status-dot" id="status-indicator"></div>
       <span class="status-text" id="status-label">Connecting...</span>
     </div>
@@ -241,6 +244,43 @@
     function openAllMachineToolPanels() {}
 
     function clearConsole() { document.getElementById("console-output").innerHTML = ""; }
+
+    async function toggleDeviceConnect() {
+      const el = document.getElementById("device-status");
+      try {
+        const statusResp = await fetch("/api/device/status");
+        const status = await statusResp.json();
+        if (status.state === "connected") {
+          el.textContent = "disconnecting...";
+          await fetch("/api/device/disconnect", { method: "POST" });
+          el.textContent = "disconnected";
+          el.style.color = "#888";
+        } else {
+          const mode = prompt("Connect mode:", "simulation");
+          if (!mode) return;
+          el.textContent = "connecting...";
+          el.style.color = "#e9c46a";
+          const resp = await fetch("/api/device/connect", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode: mode }),
+          });
+          const data = await resp.json();
+          if (resp.ok) {
+            el.textContent = data.mode + " connected";
+            el.style.color = "#4ec9b0";
+          } else {
+            el.textContent = "error";
+            el.style.color = "#e94560";
+            appendConsole("Connect failed: " + (data.detail || "unknown error"), "stderr");
+          }
+        }
+      } catch (e) {
+        el.textContent = "error";
+        el.style.color = "#e94560";
+        appendConsole("Device error: " + e, "stderr");
+      }
+    }
 
     async function runProtocol() {
       if (!editor) return;

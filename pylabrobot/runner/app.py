@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from pylabrobot.resources import Resource
 from pylabrobot.runner.assistant import Assistant
 from pylabrobot.runner.deck_bridge import DeckBridge
+from pylabrobot.runner.device_manager import ConnectionState, DeviceManager, DeviceMode
 from pylabrobot.runner.executor import ExecutionState, ProtocolExecutor
 from pylabrobot.runner.protocol_store import STARTER_TEMPLATE, ProtocolStore
 
@@ -83,6 +84,42 @@ class ClearResponse(BaseModel):
   cleared: bool
 
 
+class ConnectRequest(BaseModel):
+  mode: str = Field("simulation", description="'simulation' or 'hardware'")
+
+
+class ConnectResponse(BaseModel):
+  status: str
+  mode: str
+
+
+class DisconnectResponse(BaseModel):
+  status: str
+
+
+class DeviceStatusResponse(BaseModel):
+  state: str = Field(..., description="disconnected, connecting, connected, disconnecting, error")
+  mode: str = Field(..., description="simulation or hardware")
+  error: Optional[str] = None
+  device_type: Optional[str] = None
+  has_device: bool = False
+  has_deck: bool = False
+
+
+class DeviceConfigRequest(BaseModel):
+  device_type: Optional[str] = Field(None, description="e.g. 'TecanEVO'")
+  diti_count: Optional[int] = Field(None, description="Number of channels")
+  air_liha: Optional[bool] = Field(None, description="Use Air LiHa (ZaapMotion)")
+  has_roma: Optional[bool] = Field(None, description="Include RoMa arm")
+  packet_read_timeout: Optional[int] = None
+  read_timeout: Optional[int] = None
+  write_timeout: Optional[int] = None
+
+
+class DeviceConfigResponse(BaseModel):
+  config: Dict[str, Any]
+
+
 # ============== App Factory ==============
 
 
@@ -109,6 +146,7 @@ def create_app(
   current_deck = EVO150Deck()
   bridge = DeckBridge(current_deck)
   store = ProtocolStore()
+  device_mgr = DeviceManager()
 
   if google_api_key:
     logger.info("AI Assistant: using Google AI API key")
@@ -141,6 +179,7 @@ def create_app(
     current_deck = deck
     bridge.set_root(deck)
     assistant._root = deck
+    device_mgr.set_deck(deck)
 
   executor = ProtocolExecutor(on_output=on_output, on_deck_ready=on_deck_ready)
 
@@ -219,16 +258,18 @@ def create_app(
 
   @app.post("/api/run", tags=["Execution"], response_model=RunResponse,
             summary="Run a protocol",
-            description="Execute protocol code in simulation. The script must define a `deck` "
-            "variable and an `async def run(device):` function. The deck visualization "
-            "updates in real-time via WebSocket events.")
+            description="Execute protocol code. If a device is connected via /api/device/connect, "
+            "the protocol runs against that device. Otherwise a temporary simulated device "
+            "is created. The script must define a `deck` variable and an "
+            "`async def run(device):` function.")
   async def run_protocol(body: RunProtocolRequest):
     if executor.state == ExecutionState.RUNNING:
       raise HTTPException(status_code=409, detail="A protocol is already running")
 
     import asyncio
 
-    asyncio.create_task(executor.run(body.code))
+    managed = device_mgr.device if device_mgr.is_connected else None
+    asyncio.create_task(executor.run(body.code, device=managed))
     return RunResponse(status="started")
 
   @app.get("/api/run/status", tags=["Execution"], response_model=RunStatusResponse,
@@ -244,6 +285,53 @@ def create_app(
   async def run_stop():
     executor.stop()
     return StopResponse(status="stopping")
+
+  # ============== Device Management ==============
+
+  @app.get("/api/device/status", tags=["Device"], response_model=DeviceStatusResponse,
+           summary="Get device connection status")
+  async def device_status():
+    return DeviceStatusResponse(**device_mgr.status_dict())
+
+  @app.post("/api/device/connect", tags=["Device"], response_model=ConnectResponse,
+            summary="Connect to a device",
+            description="Connect to hardware or create a simulation device. "
+            "The deck must be configured first by running a protocol script "
+            "(which sets the deck variable). Use mode='simulation' for testing "
+            "or mode='hardware' for real instruments.")
+  async def device_connect(body: ConnectRequest):
+    mode = DeviceMode(body.mode)
+    try:
+      await device_mgr.connect(mode)
+    except Exception as e:
+      raise HTTPException(status_code=500, detail=str(e))
+
+    if device_mgr.deck is not None:
+      bridge.set_root(device_mgr.deck)
+
+    return ConnectResponse(status="connected", mode=mode.value)
+
+  @app.post("/api/device/disconnect", tags=["Device"], response_model=DisconnectResponse,
+            summary="Disconnect from the device")
+  async def device_disconnect():
+    await device_mgr.disconnect()
+    return DisconnectResponse(status="disconnected")
+
+  @app.get("/api/device/config", tags=["Device"], response_model=DeviceConfigResponse,
+           summary="Get current hardware configuration")
+  async def device_get_config():
+    return DeviceConfigResponse(config=device_mgr._hardware_config)
+
+  @app.put("/api/device/config", tags=["Device"], response_model=DeviceConfigResponse,
+           summary="Update hardware configuration",
+           description="Update device parameters for hardware mode. Only provided "
+           "fields are updated. Must be disconnected to change config.")
+  async def device_set_config(body: DeviceConfigRequest):
+    if device_mgr.is_connected:
+      raise HTTPException(status_code=409, detail="Disconnect before changing config")
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    device_mgr.set_hardware_config(updates)
+    return DeviceConfigResponse(config=device_mgr._hardware_config)
 
   # ============== AI Assistant ==============
 

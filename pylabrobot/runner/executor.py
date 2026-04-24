@@ -1,12 +1,13 @@
 """Protocol execution engine.
 
 Executes notebook-style scripts that define a deck layout and a
-run(device) function. The script namespace is executed to build the
-deck, then a simulated device is created from it and run() is called.
+run(device) function. Supports two modes:
 
-Script structure:
-  1. Imports and deck setup (top-level code)
-  2. async def run(device): — the protocol entry point
+- **Standalone**: The executor creates a simulated device from the script's
+  deck variable, runs the protocol, then tears down.
+- **Managed**: A DeviceManager provides a persistent device (real or simulated).
+  The script's deck is used to configure the manager, then run() is called
+  with the managed device.
 """
 
 from __future__ import annotations
@@ -60,14 +61,15 @@ class ProtocolExecutor:
       except Exception:
         pass
 
-  async def run(self, code: str) -> None:
+  async def run(self, code: str, device: Optional[Any] = None) -> None:
     """Execute a notebook-style protocol script.
 
-    The script should define:
-      - A ``deck`` variable (Deck resource with carriers and labware)
-      - An ``async def run(device):`` function
-
-    A simulated device is created from the deck, set up, and passed to run().
+    Args:
+      code: Protocol source code. Must define a ``deck`` variable and
+            ``async def run(device):``.
+      device: If provided, use this device instead of creating a simulated one.
+              The device must already be set up. Used by DeviceManager for
+              hardware mode.
     """
     if self._state == ExecutionState.RUNNING:
       raise RuntimeError("A protocol is already running")
@@ -75,13 +77,12 @@ class ProtocolExecutor:
     self._state = ExecutionState.RUNNING
     self._error = None
     self._device = None
+    managed_device = device is not None
     self._emit("--- Executing script ---", "info")
 
     self._task = asyncio.current_task()
 
     try:
-      # Phase 1: Execute the full script to build the namespace
-      # (imports, deck setup, function definitions)
       namespace: Dict[str, Any] = {}
 
       stdout_capture = _StreamCapture(lambda line: self._emit(line, "stdout"))
@@ -90,7 +91,6 @@ class ProtocolExecutor:
       with contextlib.redirect_stdout(stdout_capture), contextlib.redirect_stderr(stderr_capture):
         exec(compile(code, "<protocol>", "exec"), namespace)
 
-      # Phase 2: Find the deck and build a simulated device
       from pylabrobot.resources.deck import Deck
 
       deck = None
@@ -109,26 +109,24 @@ class ProtocolExecutor:
       if run_fn is None:
         raise ValueError(
           "Script must define 'async def run(device):'.\n"
-          "This function receives the simulated device."
+          "This function receives the device."
         )
       if not asyncio.iscoroutinefunction(run_fn):
         raise ValueError("'run' must be an async function (async def run(device):)")
 
-      self._emit("Deck configured, setting up simulated device...", "info")
+      if device is None:
+        self._emit("Deck configured, setting up simulated device...", "info")
+        from pylabrobot.runner.simulation import create_simulated_device
 
-      from pylabrobot.runner.simulation import create_simulated_device
+        device = create_simulated_device(deck, num_channels=8, has_arm=True)
+        await device.setup()
+        self._device = device
 
-      device = create_simulated_device(deck, num_channels=8, has_arm=True)
-      await device.setup()
-      self._device = device
-
-      # Notify the app about the new deck so visualization updates
       if self._on_deck_ready:
         self._on_deck_ready(deck, device)
 
       self._emit("Device ready, running protocol...", "info")
 
-      # Phase 3: Run the protocol
       with contextlib.redirect_stdout(stdout_capture), contextlib.redirect_stderr(stderr_capture):
         await run_fn(device)
 
@@ -150,7 +148,7 @@ class ProtocolExecutor:
       self._emit(f"--- Protocol error: {e} ---", "stderr")
 
     finally:
-      if self._device is not None:
+      if self._device is not None and not managed_device:
         try:
           await self._device.stop()
         except Exception:
