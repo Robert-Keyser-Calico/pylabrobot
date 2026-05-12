@@ -301,11 +301,11 @@ class EVOPIPBackend(PIPBackend):
       sep[channel] = int(flow_rate * self.SPEED_FACTOR)
       spp[channel] = int(tlc.dispense_breakoff * self.SPEED_FACTOR)
       stz[channel] = 0
-      volume = (
-        tlc.compute_corrected_volume(ops[i].volume)
-        + tlc.aspirate_lag_volume
-        + tlc.aspirate_tag_volume
-      )
+      air_gap = tlc.aspirate_lag_volume + tlc.aspirate_tag_volume
+      volume = tlc.compute_corrected_volume(ops[i].volume) + air_gap
+      bov = ops[i].blow_out_air_volume
+      if bov is not None and bov > 0:
+        volume -= min(bov, air_gap)
       mtr[channel] = -round(volume * self.STEPS_PER_UL)
 
     return sep, spp, stz, mtr
@@ -359,11 +359,16 @@ class EVOPIPBackend(PIPBackend):
   async def _perform_blow_out(self, ops: List[Dispense], use_channels: List[int]) -> None:
     """Push extra air volume after dispense to expel remaining liquid.
 
+    The blow-out volume is capped at the air gap volume that was held back
+    from the main dispense (leading + trailing air gaps from the liquid class).
+
     Args:
       ops: Dispense operations (checks blow_out_air_volume).
       use_channels: Channels to blow out.
     """
     assert self.liha is not None
+
+    tecan_liquid_classes = self._get_liquid_classes(ops)
 
     pvl: List[Optional[int]] = [None] * self.num_channels
     sep: List[Optional[int]] = [None] * self.num_channels
@@ -374,9 +379,12 @@ class EVOPIPBackend(PIPBackend):
       bov = ops[i].blow_out_air_volume
       if bov is not None and bov > 0:
         has_blowout = True
+        tlc = tecan_liquid_classes[i]
+        available = (tlc.aspirate_lag_volume + tlc.aspirate_tag_volume) if tlc else bov
+        actual_bov = min(bov, available)
         pvl[channel] = 0  # outlet
         sep[channel] = int(100 * self.SPEED_FACTOR)
-        ppr[channel] = -int(bov * self.STEPS_PER_UL)
+        ppr[channel] = -int(actual_bov * self.STEPS_PER_UL)
 
     if has_blowout:
       await self.liha.position_valve_logical(pvl)

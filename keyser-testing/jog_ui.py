@@ -259,6 +259,7 @@ HTML = """
         <button class="btn" onclick="sendAction('z_up')">Z Up (Clear)</button>
         <button class="btn" onclick="sendAction('park_roma')">Park RoMa</button>
         <button class="btn" onclick="sendAction('tips_status')">Check Tips</button>
+        <button class="btn" onclick="sendAction('eject_tips')" style="border-color:#e9c46a">Eject Tips</button>
         <button class="btn" onclick="sendAction('ree')">Axis Status</button>
       </div>
       <details style="margin-top:4px">
@@ -894,6 +895,15 @@ async def do_action(action):
     resp = await driver.send_command("C5", command="RTS")
     status = resp["data"][0] if resp and resp.get("data") else "?"
     return f"Tip status: {status} (0=none, 255=all)"
+  elif action == "eject_tips":
+    pip_be = evo.pip.backend
+    num_ch = pip_be.num_channels
+    z_range = pip_be._z_range
+    await pip_be.liha.set_z_travel_height([z_range] * num_ch)
+    tips_mask = (1 << num_ch) - 1
+    await driver.send_command("C5", command="SDT0,50,200")
+    await pip_be.liha.discard_disposable_tip_high(tips_mask)
+    return f"Tips ejected (mask={tips_mask:#x})"
   elif action == "ree":
     resp = await driver.send_command("C5", command="REE0")
     err = resp["data"][0] if resp and resp.get("data") else ""

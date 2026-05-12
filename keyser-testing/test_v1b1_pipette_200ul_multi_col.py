@@ -1,15 +1,17 @@
-"""Hardware test: TecanEVO v1b1 pipetting with 200uL tips.
+"""Hardware test: TecanEVO pipetting 100uL across columns 4, 5, 6.
 
-Tests pick up tips, aspirate 100uL, dispense, and drop tips.
+Picks up tips, aspirates 100uL from source plate, dispenses into
+destination plate, and drops tips — repeated for columns 4, 5, and 6.
+Uses a fresh column of tips for each transfer.
 
 Deck layout:
   Rail 16: MP_3Pos carrier
-    Position 1: Eppendorf plate (source, water in column 2)
+    Position 1: Eppendorf plate (source, water in columns 4-6)
     Position 2: Eppendorf plate (destination, empty)
     Position 3: DiTi_200ul_SBS_LiHa tip rack
 
 Usage:
-  python keyser-testing/test_v1b1_pipette_200ul.py
+  python keyser-testing/test_v1b1_pipette_200ul_multi_col.py
 """
 
 import asyncio
@@ -25,15 +27,15 @@ from pylabrobot.tecan.evo import TecanEVO
 
 logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
 
-COLUMN_2 = ["A2", "B2", "C2", "D2", "E2", "F2", "G2", "H2"]
+ROWS = ["A", "B", "C", "D", "E", "F", "G", "H"]
+COLS = [4, 5, 6]
 
 
 async def main():
   print("=" * 60)
-  print("  TecanEVO v1b1 Pipetting Test — 200uL tips, 100uL volume")
+  print("  TecanEVO Pipetting Test — 200uL tips, 100uL, cols 4-5-6")
   print("=" * 60)
 
-  # --- Deck setup ---
   deck = EVO150Deck()
   evo = TecanEVO(
     name="evo",
@@ -51,16 +53,16 @@ async def main():
 
   source_plate = Eppendorf_96_wellplate_250ul_Vb_skirted("source")
   dest_plate = Eppendorf_96_wellplate_250ul_Vb_skirted("dest")
-  tip_rack= DiTi_200ul_SBS_LiHa_Air("tips")
+  tip_rack = DiTi_200ul_SBS_LiHa_Air("tips")
   carrier[0] = source_plate
   carrier[1] = dest_plate
   carrier[2] = tip_rack
 
   print("\nDeck layout:")
   print("  MP_3Pos carrier: rail 16")
-  print(f"    Position 3: {source_plate.name} (water in column 2)")
+  print(f"    Position 1: {source_plate.name} (water in columns 4-6)")
   print(f"    Position 2: {dest_plate.name} (empty)")
-  print(f"    Position 1: {tip_rack.name} (DiTi 200uL)")
+  print(f"    Position 3: {tip_rack.name} (DiTi 200uL)")
 
   print("\nInitializing...")
   try:
@@ -74,28 +76,34 @@ async def main():
     return
 
   try:
-    # --- Test 1: Pick up 8 tips ---
-    print("\n--- Test 1: Pick Up 200uL Tips ---")
-    print(f"  AGT: z_start={tip_rack.z_start} z_max={tip_rack.z_max}")
-    await evo.pip.pick_up_tips(tip_rack.get_items(COLUMN_2))
-    print("Tips picked up!")
+    for col in COLS:
+      wells = [f"{row}{col}" for row in ROWS]
 
-    # --- Test 2: Aspirate ---
-    print("\n--- Test 2: Aspirate 100uL ---")
-    await evo.pip.aspirate(source_plate.get_items(COLUMN_2), vols=[100] * 8)
-    print("Aspirated!")
+      print(f"\n{'=' * 60}")
+      print(f"  Column {col}: pick up, aspirate, dispense, drop off")
+      print(f"{'=' * 60}")
 
-    # --- Test 3: Dispense ---
-    print("\n--- Test 3: Dispense 100uL ---")
-    await evo.pip.dispense(dest_plate.get_items(COLUMN_2), vols=[100] * 8)
-    print("Dispensed!")
+      print(f"\n  Pick up tips from column {col}...")
+      await evo.pip.pick_up_tips(tip_rack.get_items(wells))
+      print("  Tips picked up!")
 
-    # --- Test 4: Drop tips ---
-    print("\n--- Test 4: Drop Tips ---")
-    await evo.pip.drop_tips(tip_rack.get_items(COLUMN_2))
-    print("Tips dropped!")
+      print(f"\n  Aspirate 100uL from source column {col}...")
+      await evo.pip.aspirate(source_plate.get_items(wells), vols=[100] * 8)
+      print("  Aspirated!")
 
-    print("\n*** 200uL PIPETTING TEST PASSED ***")
+      print(f"\n  Dispense 100uL into dest column {col}...")
+      await evo.pip.dispense(dest_plate.get_items(wells), vols=[100] * 8)
+      print("  Dispensed!")
+
+      print(f"\n  Drop tips back into column {col}...")
+      await evo.pip.drop_tips(tip_rack.get_items(wells))
+      print("  Tips dropped!")
+
+      print(f"\n  Column {col} transfer complete.")
+
+    print(f"\n{'*' * 60}")
+    print("  ALL TRANSFERS COMPLETE — columns 4, 5, 6 done")
+    print(f"{'*' * 60}")
 
   except Exception as e:
     print(f"\nTest FAILED: {type(e).__name__}: {e}")

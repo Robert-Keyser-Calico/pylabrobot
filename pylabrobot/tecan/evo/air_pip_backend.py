@@ -499,3 +499,5 @@ class AirEVOPIPBackend(EVOPIPBackend):
     await self.liha.set_tracking_distance_z(stz)
     await self.liha.move_tracking_relative(mtr)
     await self._zaapmotion_force_off()
+
+    await self._perform_blow_out(ops, use_channels)
