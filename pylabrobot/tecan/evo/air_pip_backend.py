@@ -432,7 +432,6 @@ class AirEVOPIPBackend(EVOPIPBackend):
       await self.liha.set_z_travel_height([self._z_range] * self.num_channels)
 
     # Aspirate + retract with force mode
-    zadd = [min(z, 32) if z else None for z in zadd]
     ssz, sep, stz, mtr, ssz_r = self._aspirate_action(ops, use_channels, tecan_liquid_classes, zadd)
     await self.liha.set_slow_speed_z(ssz)
     await self._zaapmotion_force_on()

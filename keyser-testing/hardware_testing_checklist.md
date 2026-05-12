@@ -126,7 +126,9 @@
 
 ---
 
-## Test 7: Full Cycle — NOT STARTED
+## Test 7: Full Cycle — PASSED
+
+**Date:** 2026-05-05
 
 | Step | Pass? | Notes |
 |------|-------|-------|
@@ -136,6 +138,36 @@
 | Dispense | [x] | z_dispense=99 (well bottom) |
 | Tip drop | [x] | Working |
 | Clean stop | [x] | |
+
+---
+
+## Test 8b: Volume Accuracy Diagnostic — PASSED
+
+**Script:** `keyser-testing/test_v1b1_volume_diagnostic.py`
+**Date:** 2026-05-05
+
+Tests 100uL transfers with 200uL tips, isolating variables that affect volume accuracy.
+
+| Test | Column | Result |
+|------|--------|--------|
+| Baseline (plain aspirate + dispense) | 4 | Accurate |
+| Blow-out (15uL air after dispense) | 5 | Accurate |
+| Pre-wet (3x mix before aspirate) | 6 | Accurate |
+| Pre-wet + Blow-out | 7 | Accurate |
+
+### Fixes Applied
+- **Air backend blow-out bug**: `air_pip_backend.py` `dispense()` was not calling
+  `_perform_blow_out()` — blow_out_air_volume was silently ignored. Fixed.
+- **Blow-out plunger overrun**: `_dispense_action()` was pushing out all air
+  (lag + tag + liquid), leaving zero plunger travel for blow-out. Fixed by holding
+  back air gap volume from main dispense when blow-out is requested.
+- **Blow-out volume capped**: `_perform_blow_out()` now caps at available air
+  (lag + tag from liquid class) to prevent plunger overrun errors.
+
+### Initial Misdiagnosis
+First run showed 60-70uL shortfall on all tests — root cause was **50uL tips loaded
+instead of 200uL tips**. 50uL tips max out at 55uL, so 100uL commands physically
+couldn't be fulfilled. With correct 200uL tips, all tests passed including baseline.
 
 ---
 
@@ -192,9 +224,17 @@ Labware edits saved in `keyser-testing/labware_edits.json`.
 | `keyser-testing/jog_and_teach.py` | CLI jog/teach tool |
 | `keyser-testing/load_tips.py` | Pick up tips from selected column (1-12) |
 | `keyser-testing/tips_off.py` | Emergency tip removal (raw firmware commands) |
-| `keyser-testing/tips_off_tipbox.py` | Drop tips back into tip box column 1 |
+| `keyser-testing/tips_off_tipbox.py` | Drop tips back into tip box at selected column |
+| `keyser-testing/eject_tips_home.py` | Eject tips at home position |
+| `keyser-testing/transfer_tips.py` | Transfer tips from one rack column to another |
 | `keyser-testing/test_v1b1_init.py` | Init test with timing |
-| `keyser-testing/test_v1b1_pipette.py` | Full pipetting cycle test |
+| `keyser-testing/test_v1b1_pipette.py` | Full pipetting cycle test (50uL tips) |
+| `keyser-testing/test_v1b1_pipette_200ul.py` | Pipetting test — 200uL tips, 100uL volume |
+| `keyser-testing/test_v1b1_pipette_1000ul.py` | Pipetting test — 1000uL tips |
+| `keyser-testing/test_v1b1_pipette_200ul_multi_col.py` | Multi-column transfer — cols 4, 5, 6 |
+| `keyser-testing/test_v1b1_roma.py` | RoMa plate handling test |
+| `keyser-testing/test_v1b1_volume_diagnostic.py` | Volume accuracy diagnostic (baseline, blow-out, pre-wet) |
+| `keyser-testing/labware_library.py` | Custom labware definitions (carriers, plates, tips) |
 
 ---
 
@@ -221,6 +261,62 @@ Root cause of systematic X/Y offset identified and fixed:
 
 ---
 
+## Test 9: Multi-Tip-Size Cycle — NOT STARTED
+
+Run the same pipetting workflow (pick up, aspirate, dispense, drop) with all three
+tip sizes to validate end-to-end accuracy across the full tip range.
+
+| Tip Size | Volume | Pick up | Aspirate | Dispense | Drop | Pass? |
+|----------|--------|---------|----------|----------|------|-------|
+| 50uL | 25uL | [ ] | [ ] | [ ] | [ ] | |
+| 200uL | 100uL | [ ] | [ ] | [ ] | [ ] | |
+| 1000uL | 500uL | [ ] | [ ] | [ ] | [ ] | |
+
+---
+
+## Test 10: Serial Dilution — NOT STARTED
+
+Aspirate from source, dispense into dest column, then re-aspirate from that dest column
+and dispense into the next — tests multi-step liquid handling accuracy and carryover.
+
+| Step | Source | Dest | Volume | Pass? |
+|------|--------|------|--------|-------|
+| Transfer 1 | source col 1 | dest col 1 | 100uL | [ ] |
+| Transfer 2 | dest col 1 | dest col 2 | 100uL | [ ] |
+| Transfer 3 | dest col 2 | dest col 3 | 100uL | [ ] |
+
+---
+
+## Test 11: 384-Well Plate Positioning — NOT STARTED
+
+Validate positioning accuracy with 384-well plates (3.6mm well diameter, 4.5mm pitch).
+Critical for verifying per-channel X alignment (see Known Issue #6).
+
+**Prerequisites:** 384-well plate definition in labware_library.py, plate Z-positions taught.
+
+| Step | Expected | Pass? |
+|------|----------|-------|
+| Tip pickup (200uL) | Tips mounted | [ ] |
+| Move to 384-well col 1 | All 16 rows accessible (2x8) | [ ] |
+| Aspirate from col 1 | No tip-wall contact / crash | [ ] |
+| Dispense into col 2 | Centered in wells | [ ] |
+| Visual alignment check | Tips centered at depth | [ ] |
+
+---
+
+## Test 12: Liquid Level Detection (LLD) Validation — NOT STARTED
+
+Test LLD at different fill levels to verify detection accuracy and reliability.
+
+| Fill Level | Expected Z | Detected Z | Delta | Pass? |
+|------------|-----------|------------|-------|-------|
+| Full (~200uL/well) | | | | [ ] |
+| Half (~100uL/well) | | | | [ ] |
+| Low (~25uL/well) | | | | [ ] |
+| Empty (air) | Should fail/timeout | | | [ ] |
+
+---
+
 ## Known Issues / TODO
 
 1. ~~Aspirate STL fix~~ — validated 2026-04-07
@@ -228,3 +324,4 @@ Root cause of systematic X/Y offset identified and fixed:
 3. ~~Init ordering changed~~ — PIP before RoMa validated on cold boot 2026-04-08
 4. ~~200uL / 1000uL tips~~ — fitting_depth=11.0mm measured on hardware, all 3 sizes validated (50uL/200uL/1000uL) 2026-04-09
 5. ~~RoMa plate handling~~ — validated 2026-04-08, move_resource API working
+6. **Per-channel X alignment drift at depth** — channels appear aligned at home Z but show small X offsets as they descend, likely due to slightly non-vertical Z shafts. Causes tips to contact well walls instead of centering. Functional for 96-well plates (6.8mm opening) but may be a risk for 384-well (3.6mm opening). No software fix — firmware only supports a single X position for all channels. Mechanical correction (shaft straightening) required if 384-well work is needed. Observed 2026-05-06.
