@@ -137,6 +137,50 @@ def Eppendorf_96_wellplate_250ul_Vb_skirted(name: str) -> TecanPlate:
   )
 
 
+def DeepWell_96_Round_Corrected(name: str) -> TecanPlate:
+  """96-well round deep-well plate (~2mL), corrected dx/dy.
+
+  Based on upstream DeepWell_96_Well with SBS/SLAS 4-2004 well position
+  correction (same dx fix applied to Eppendorf plate).
+
+  Upstream dx=9.9 corrected to 11.64 (SBS P1=14.38 - well_center=2.74).
+  Upstream dy=6.7 corrected to 8.26 (matching Eppendorf 96-well).
+
+  Z positions are PLACEHOLDER values — must be taught from hardware
+  using jog_ui.py before running tests.
+
+  Well diameter assumed ~6.5mm (area=33.2mm²). Measure your plate and
+  update if different.
+  """
+  return TecanPlate(
+    name=name,
+    size_x=127.8,
+    size_y=85.4,
+    size_z=39.0,
+    lid=None,
+    model="DeepWell_96_Round_Corrected",
+    z_start=1670.0,    # TODO: teach from hardware via jog_ui.py
+    z_dispense=1690.0,  # TODO: teach from hardware
+    z_max=2060.0,       # TODO: teach from hardware
+    area=33.2,
+    ordered_items=create_ordered_items_2d(
+      Well,
+      num_items_x=12,
+      num_items_y=8,
+      dx=11.64,   # SBS P1(14.38) - well_center(2.74); was 9.9
+      dy=8.26,    # corrected to match Eppendorf; was 6.7
+      dz=0.0,
+      item_dx=9.0,
+      item_dy=9.0,
+      size_x=6.5,
+      size_y=6.5,
+      size_z=39.0,
+      bottom_type=WellBottomType.U,
+      cross_section_type=CrossSectionType.CIRCLE,
+    ),
+  )
+
+
 # ============== Tips ==============
 
 

@@ -6,12 +6,63 @@ All three tip racks and plates are set up simultaneously — no swapping.
 
   Rail  4: MP_3Pos — 50uL tips,   source plate, dest plate  (25uL,  col 1)
   Rail 16: MP_3Pos — 200uL tips,  source plate, dest plate  (100uL, col 1)
-  Rail 26: MP_3Pos — 1000uL tips, source plate, dest plate  (200uL, col 1)
+  Rail 26: MP_3Pos — 1000uL tips, deep-well source, deep-well dest (500uL, col 1)
 
 Each carrier position:
   Position 1: source plate (water in column 1)
   Position 2: destination plate (empty)
   Position 3: tip rack
+
+================================================================================
+OPERATOR SETUP INSTRUCTIONS
+================================================================================
+
+Equipment needed:
+  - 3x MP 3-Position carriers (Tecan P/N 10612604)
+  - 2x Eppendorf twin.tec 96-well plates (source, P/N 0030133374) — skirted
+  - 2x Eppendorf twin.tec 96-well plates (destination, same P/N) — skirted
+  - 1x 96-well round deep-well plate (source, ~2mL/well) — skirted
+  - 1x 96-well round deep-well plate (destination, same type) — skirted
+  - 1x DiTi 50uL SBS tip rack (Tecan P/N 30057813) — full box
+  - 1x DiTi 200uL SBS tip rack — full box
+  - 1x DiTi 1000uL SBS tip rack — full box
+
+Deck layout (front-to-back positions on each carrier):
+
+  Rail 4 — 50uL test:
+    Position 1 (front):  Source plate — fill column 1 (A1-H1) with 50uL water each
+    Position 2 (middle): Destination plate — empty
+    Position 3 (rear):   DiTi 50uL SBS tip rack — full, unused
+
+  Rail 16 — 200uL test:
+    Position 1 (front):  Source plate — fill column 1 (A1-H1) with 200uL water each
+    Position 2 (middle): Destination plate — empty
+    Position 3 (rear):   DiTi 200uL SBS tip rack — full, unused
+
+  Rail 26 — 1000uL test (DEEP-WELL PLATES):
+    Position 1 (front):  Deep-well source plate — fill column 1 (A1-H1) with 1000uL water each
+    Position 2 (middle): Deep-well destination plate — empty
+    Position 3 (rear):   DiTi 1000uL SBS tip rack — full, unused
+
+PREREQUISITE for Rail 26: The deep-well plate Z positions must be taught
+  via jog_ui.py before running. Update z_start, z_dispense, z_max in
+  labware_library.py -> DeepWell_96_Round_Corrected() with taught values.
+
+Source plate fill volumes:
+  - 50uL tips:   fill 50uL/well (2x the 25uL aspirate volume, gives margin)
+  - 200uL tips:  fill 200uL/well (2x the 100uL aspirate volume)
+  - 1000uL tips: fill 1000uL/well in deep-well plate (2x the 500uL aspirate volume)
+
+Checklist before running:
+  [ ] All 3 carriers seated firmly on rails 4, 16, 26
+  [ ] All plates pushed fully into carrier positions (click into holders)
+  [ ] Source plates filled in column 1 ONLY (A1-H1) with correct volumes
+  [ ] Destination plates are empty and dry
+  [ ] Tip racks are full (no missing tips in column 1)
+  [ ] EVOware PC USB disconnected
+  [ ] pylabrobot PC USB connected
+
+================================================================================
 
 Usage:
   python keyser-testing/test_v1b1_multi_tip_cycle.py
@@ -25,6 +76,7 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 
 from labware_library import (
+  DeepWell_96_Round_Corrected,
   DiTi_50ul_SBS_LiHa_Air,
   DiTi_200ul_SBS_LiHa_Air,
   DiTi_1000ul_SBS_LiHa_Air,
@@ -41,9 +93,9 @@ COL = 1
 WELLS = [f"{row}{COL}" for row in ROWS]
 
 TIP_TESTS = [
-  {"label": "DiTi 50uL",   "rack_fn": DiTi_50ul_SBS_LiHa_Air,   "volume": 25,  "rail": 4},
-  {"label": "DiTi 200uL",  "rack_fn": DiTi_200ul_SBS_LiHa_Air,  "volume": 100, "rail": 16},
-  {"label": "DiTi 1000uL", "rack_fn": DiTi_1000ul_SBS_LiHa_Air, "volume": 200, "rail": 26},
+  {"label": "DiTi 50uL",   "rack_fn": DiTi_50ul_SBS_LiHa_Air,   "volume": 25,  "rail": 4,  "plate_fn": Eppendorf_96_wellplate_250ul_Vb_skirted},
+  {"label": "DiTi 200uL",  "rack_fn": DiTi_200ul_SBS_LiHa_Air,  "volume": 100, "rail": 16, "plate_fn": Eppendorf_96_wellplate_250ul_Vb_skirted},
+  {"label": "DiTi 1000uL", "rack_fn": DiTi_1000ul_SBS_LiHa_Air, "volume": 500, "rail": 26, "plate_fn": DeepWell_96_Round_Corrected},
 ]
 
 
@@ -80,8 +132,9 @@ async def main():
     deck.assign_child_resource(carrier, rails=rail)
     carriers[rail] = carrier
 
-    source = Eppendorf_96_wellplate_250ul_Vb_skirted(f"source_r{rail}")
-    dest = Eppendorf_96_wellplate_250ul_Vb_skirted(f"dest_r{rail}")
+    plate_fn = test["plate_fn"]
+    source = plate_fn(f"source_r{rail}")
+    dest = plate_fn(f"dest_r{rail}")
     tips = test["rack_fn"](f"tips_r{rail}")
     carrier[0] = source
     carrier[1] = dest
@@ -121,7 +174,8 @@ async def main():
       print(f"  Tip rack: {tip_rack.model}")
       print(f"    z_start={tip_rack.z_start}  z_max={tip_rack.z_max}")
 
-      input(f"\n  Press Enter to start {label} cycle...")
+      print(f"\n  Starting {label} cycle...")
+      await asyncio.sleep(2)
 
       print(f"\n  Pick up tips from col {COL}...")
       await evo.pip.pick_up_tips(tip_rack.get_items(WELLS))
