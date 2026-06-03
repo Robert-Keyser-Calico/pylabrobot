@@ -6,8 +6,8 @@ for both LiHa and RoMa arms.
 Numpad controls:
   LiHa:
     4/6  X left/right
-    8/2  Y forward/back
-    +/-  Z up/down (away from / toward deck)
+    8/2  Y back/forward (8=away from operator, 2=toward operator)
+    +/-  Z down/up (+=toward deck, -=away from deck)
     7/9  Step size down/up
 
   RoMa:
@@ -37,6 +37,7 @@ logging.basicConfig(level=logging.WARNING)
 evo = None
 driver = None
 loop = None
+tip_racks = {}  # populated by build_deck()
 
 STEP_SIZES = [0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0]
 current_step_idx = 4  # start at 5mm
@@ -53,6 +54,7 @@ def run_async(coro):
 
 
 app = Flask(__name__)
+app.json.sort_keys = False
 
 HTML = """
 <!DOCTYPE html>
@@ -61,63 +63,87 @@ HTML = """
 <title>Tecan EVO Jog</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #1a1a2e; color: #eee;
+  body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0f172a; color: #e2e8f0;
          display: flex; flex-direction: column; height: 100vh; }
-  .header { background: #16213e; padding: 12px 20px; display: flex; justify-content: space-between;
-            align-items: center; border-bottom: 2px solid #0f3460; }
-  .header h1 { font-size: 18px; color: #e94560; }
-  .status { font-size: 12px; color: #888; }
+  .header { background: #1e293b; padding: 12px 20px; display: flex; justify-content: space-between;
+            align-items: center; border-bottom: 2px solid #334155; }
+  .header h1 { font-size: 18px; color: #60a5fa; }
+  .status { font-size: 12px; color: #64748b; }
   .main { display: flex; flex: 1; overflow: hidden; }
 
   .panel { padding: 16px; overflow-y: auto; }
-  .left { width: 55%; border-right: 1px solid #333; }
-  .right { width: 45%; }
+  .log-col { width: 20%; border-right: 1px solid #334155; display: flex; flex-direction: column; }
+  .left { width: 45%; border-right: 1px solid #334155; }
+  .right { width: 35%; }
 
-  .position-box { background: #16213e; border-radius: 8px; padding: 16px; margin-bottom: 12px;
-                  border: 1px solid #0f3460; }
-  .position-box h2 { font-size: 14px; color: #e94560; margin-bottom: 10px; text-transform: uppercase;
+  .position-box { background: #1e293b; border-radius: 8px; padding: 16px; margin-bottom: 12px;
+                  border: 1px solid #334155; }
+  .position-box h2 { font-size: 14px; color: #60a5fa; margin-bottom: 10px; text-transform: uppercase;
                      letter-spacing: 1px; }
-  .position-box.active { border-color: #e94560; box-shadow: 0 0 10px rgba(233,69,96,0.3); }
+  .position-box.active { border-color: #60a5fa; box-shadow: 0 0 10px rgba(38,139,210,0.3); }
 
   .pos-grid { display: grid; grid-template-columns: 60px 1fr 80px; gap: 4px; align-items: center; }
-  .pos-label { font-weight: bold; color: #aaa; font-size: 13px; }
-  .pos-bar { background: #0a0a1a; border-radius: 4px; height: 24px; position: relative; overflow: hidden; }
-  .pos-fill { height: 100%; background: linear-gradient(90deg, #0f3460, #e94560); border-radius: 4px;
+  .pos-label { font-weight: bold; color: #cbd5e1; font-size: 13px; }
+  .pos-bar { background: #0f172a; border-radius: 4px; height: 24px; position: relative; overflow: hidden; }
+  .pos-fill { height: 100%; background: linear-gradient(90deg, #1e3a5f, #3b6ea5); border-radius: 4px;
               transition: width 0.3s; }
   .pos-value { font-family: 'Courier New', monospace; font-size: 14px; text-align: right; }
 
   .controls { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
-  .btn { padding: 6px 14px; border: 1px solid #444; background: #16213e; color: #eee;
+  .btn { padding: 6px 14px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0;
          border-radius: 4px; cursor: pointer; font-size: 12px; }
-  .btn:hover { background: #0f3460; }
-  .btn.active { background: #e94560; border-color: #e94560; }
+  .btn:hover { background: #334155; }
+  .btn.active { background: #60a5fa; border-color: #60a5fa; color: #ffffff; }
   .btn.small { padding: 4px 8px; font-size: 11px; }
 
-  .step-display { background: #0a0a1a; padding: 8px 16px; border-radius: 4px;
+  .step-display { background: #0f172a; padding: 8px 16px; border-radius: 4px;
                   font-family: monospace; font-size: 16px; text-align: center;
-                  color: #e94560; margin-bottom: 12px; }
+                  color: #60a5fa; margin-bottom: 12px; }
 
-  .key-help { font-size: 11px; color: #666; line-height: 1.8; }
-  .key { display: inline-block; background: #333; padding: 2px 6px; border-radius: 3px;
+  .key-help { font-size: 11px; color: #64748b; line-height: 1.8; }
+  .key { display: inline-block; background: #1e293b; padding: 2px 6px; border-radius: 3px;
          font-family: monospace; font-size: 11px; min-width: 20px; text-align: center;
-         border: 1px solid #555; }
+         border: 1px solid #334155; color: #e2e8f0; }
 
   .teach-section { margin-top: 12px; }
   .teach-row { display: flex; gap: 8px; margin-bottom: 6px; align-items: center; }
-  .teach-row input { background: #0a0a1a; border: 1px solid #444; color: #eee; padding: 4px 8px;
+  .teach-row input { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 4px 8px;
                      border-radius: 4px; font-size: 12px; width: 120px; }
-  .teach-row select { background: #0a0a1a; border: 1px solid #444; color: #eee; padding: 4px 8px;
+  .teach-row select { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 4px 8px;
                       border-radius: 4px; font-size: 12px; }
 
-  .log { background: #0a0a1a; border-radius: 4px; padding: 8px; font-family: monospace;
-         font-size: 11px; max-height: 200px; overflow-y: auto; color: #888; }
+  .log { background: #0f172a; border-radius: 4px; padding: 8px; font-family: monospace;
+         font-size: 11px; flex: 1; overflow-y: auto; color: #64748b; }
   .log .entry { margin-bottom: 2px; }
-  .log .ok { color: #4ec9b0; }
-  .log .err { color: #e94560; }
+  .log .ok { color: #34d399; }
+  .log .err { color: #f87171; }
+
+  .pos-readout { background: #0f172a; padding: 6px 12px; border-radius: 4px;
+                 font-family: 'Courier New', monospace; font-size: 12px; color: #5eead4;
+                 margin-bottom: 10px; }
+
+  .deck-map { background: #0f172a; border-radius: 8px; padding: 8px; margin-top: 12px;
+              border: 1px solid #334155; cursor: crosshair; }
+  .deck-map svg { width: 100%; display: block; }
+  .deck-map .lw-rect { stroke: #334155; stroke-width: 1; cursor: pointer; opacity: 0.85; }
+  .deck-map .lw-rect:hover { opacity: 1; stroke: #60a5fa; stroke-width: 2; }
+  .deck-map .lw-label { font-size: 7px; fill: #e2e8f0; pointer-events: none;
+                         font-family: 'Segoe UI', sans-serif; }
+  .deck-map .arm-marker { pointer-events: none; }
+
+  .confirm-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                   background: rgba(0,0,0,0.7); z-index: 1000; justify-content: center;
+                   align-items: center; }
+  .confirm-modal.visible { display: flex; }
+  .confirm-box { background: #1e293b; border: 2px solid #60a5fa; border-radius: 8px;
+                 padding: 24px; max-width: 400px; text-align: center; }
+  .confirm-box h3 { color: #60a5fa; margin-bottom: 12px; }
+  .confirm-box .coords { font-family: monospace; font-size: 14px; color: #5eead4; margin: 12px 0; }
+  .confirm-box .hint { font-size: 12px; color: #64748b; margin-top: 12px; }
 
   .saved-positions { margin-top: 12px; }
   .saved-pos { display: flex; justify-content: space-between; align-items: center;
-               padding: 4px 8px; background: #16213e; border-radius: 4px; margin-bottom: 4px;
+               padding: 4px 8px; background: #1e293b; border-radius: 4px; margin-bottom: 4px;
                font-size: 12px; }
 </style>
 </head>
@@ -125,11 +151,17 @@ HTML = """
 <div class="header">
   <h1>Tecan EVO Jog & Teach</h1>
   <div style="display:flex;align-items:center;gap:12px;">
-    <button class="btn" id="btn-connect" onclick="toggleConnect()" style="background:#0f3460">Connect</button>
+    <button class="btn" id="btn-connect" onclick="toggleConnect()" style="background:#334155">Connect</button>
     <div class="status" id="status">Disconnected</div>
   </div>
 </div>
 <div class="main">
+  <!-- Log column -->
+  <div class="panel log-col">
+    <h2 style="font-size:14px;color:#60a5fa;margin-bottom:8px;">LOG</h2>
+    <div class="log" id="log"></div>
+  </div>
+
   <div class="panel left">
     <!-- Arm selector -->
     <div class="controls">
@@ -140,7 +172,7 @@ HTML = """
     <!-- Step size -->
     <div class="step-display">
       Step: <span id="step-size">5.0</span> mm
-      <span style="font-size:11px;color:#666;margin-left:8px">
+      <span style="font-size:11px;color:#334155;margin-left:8px">
         (<span class="key">7</span> smaller / <span class="key">9</span> bigger)
       </span>
     </div>
@@ -160,6 +192,26 @@ HTML = """
         <span class="pos-label">Z1</span>
         <div class="pos-bar"><div class="pos-fill" id="liha-z-bar" style="width:50%"></div></div>
         <span class="pos-value" id="liha-z">—</span>
+
+        <span class="pos-label" id="liha-ztip-row1" style="display:none;color:#fbbf24;">Z tip</span>
+        <div class="pos-bar" id="liha-ztip-row2" style="display:none;"><div class="pos-fill" id="liha-ztip-bar" style="width:50%;background:linear-gradient(90deg,#5c3d1a,#b8942a);"></div></div>
+        <span class="pos-value" id="liha-ztip-row3" style="display:none;color:#fbbf24;" ><span id="liha-ztip">—</span></span>
+      </div>
+      <div id="liha-tip-label" style="margin-top:4px;font-size:10px;color:#fbbf24;text-align:right;display:none;"></div>
+    </div>
+
+    <!-- Direct XYZ input -->
+    <div style="background:#1e293b;border-radius:8px;padding:10px;margin-bottom:12px;border:1px solid #334155;">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+        <span style="font-size:12px;color:#60a5fa;font-weight:bold;">MOVE TO:</span>
+        <label style="font-size:11px;color:#cbd5e1;">X</label>
+        <input type="number" id="input-x" step="0.1" style="width:70px;background:#0f172a;border:1px solid #444;color:#e2e8f0;padding:3px 6px;border-radius:4px;font-size:12px;font-family:monospace;">
+        <label style="font-size:11px;color:#cbd5e1;">Y</label>
+        <input type="number" id="input-y" step="0.1" style="width:70px;background:#0f172a;border:1px solid #444;color:#e2e8f0;padding:3px 6px;border-radius:4px;font-size:12px;font-family:monospace;">
+        <label style="font-size:11px;color:#cbd5e1;" id="input-z-label">Z</label>
+        <input type="number" id="input-z" step="0.1" style="width:70px;background:#0f172a;border:1px solid #444;color:#e2e8f0;padding:3px 6px;border-radius:4px;font-size:12px;font-family:monospace;">
+        <button class="btn small" onclick="directMove()" style="border-color:#34d399;color:#34d399;">Go</button>
+        <span style="font-size:10px;color:#334155;" id="input-coords-hint">mm (Tecan coords)</span>
       </div>
     </div>
 
@@ -198,8 +250,8 @@ HTML = """
     <div class="key-help">
       <b>LiHa (Numpad):</b>
       <span class="key">4</span>/<span class="key">6</span> X &nbsp;
-      <span class="key">8</span>/<span class="key">2</span> Y &nbsp;
-      <span class="key">+</span>/<span class="key">-</span> Z up/down &nbsp;
+      <span class="key">8</span>/<span class="key">2</span> Y back/fwd &nbsp;
+      <span class="key">+</span>/<span class="key">-</span> Z down/up &nbsp;
       <span class="key">7</span>/<span class="key">9</span> Step
       <br>
       <b>RoMa (Arrows):</b>
@@ -209,31 +261,45 @@ HTML = """
       <span class="key">Home</span>/<span class="key">End</span> R &nbsp;
       <span class="key">[</span>/<span class="key">]</span> G close/open
     </div>
+
+    <!-- Deck map -->
+    <div class="deck-map">
+      <svg id="deck-svg" viewBox="0 0 960 400" preserveAspectRatio="xMidYMid meet">
+        <rect x="0" y="0" width="960" height="400" fill="#0f172a" />
+        <text x="480" y="395" text-anchor="middle" fill="#334155" font-size="10"
+              font-family="sans-serif">&#9650; OPERATOR (front)</text>
+        <g id="deck-labware"></g>
+        <g id="deck-arm" class="arm-marker"></g>
+      </svg>
+    </div>
   </div>
 
   <div class="panel right">
     <!-- Labware Inspector -->
     <div>
-      <h2 style="font-size:14px;color:#e94560;margin-bottom:8px;">LABWARE</h2>
+      <h2 style="font-size:14px;color:#60a5fa;margin-bottom:8px;">LABWARE</h2>
       <div class="controls" id="labware-tabs"></div>
-      <div id="labware-detail" style="background:#16213e;border-radius:8px;padding:12px;
-           border:1px solid #0f3460;font-size:12px;margin-bottom:12px;">
-        <i style="color:#666">Select labware above</i>
+      <div id="labware-detail" style="background:#1e293b;border-radius:8px;padding:12px;
+           border:1px solid #334155;font-size:12px;margin-bottom:12px;">
+        <i style="color:#334155">Select labware above</i>
       </div>
     </div>
 
+    <!-- Live position readout -->
+    <div class="pos-readout" id="pos-readout">LiHa: X=—  Y=—  Z=—</div>
+
     <!-- Teach -->
     <div>
-      <h2 style="font-size:14px;color:#e94560;margin-bottom:8px;">TEACH FROM CURRENT Z</h2>
+      <h2 style="font-size:14px;color:#60a5fa;margin-bottom:8px;">TEACH FROM CURRENT Z</h2>
       <div class="teach-row">
-        <label style="color:#aaa;font-size:12px;width:70px">Mounted:</label>
+        <label style="color:#cbd5e1;font-size:12px;width:70px">Mounted:</label>
         <select id="teach-tip-type" style="width:140px" onchange="updateTipInfo()">
           <option value="none">No tip</option>
           <option value="50ul">DiTi 50µL (ext 470)</option>
           <option value="200ul">DiTi 200µL (ext 475)</option>
           <option value="1000ul">DiTi 1000µL (ext 851)</option>
         </select>
-        <span id="tip-ext-info" style="font-size:11px;color:#888;margin-left:4px"></span>
+        <span id="tip-ext-info" style="font-size:11px;color:#64748b;margin-left:4px"></span>
       </div>
       <div class="teach-row" style="margin-top:4px">
         <select id="teach-field" style="width:110px">
@@ -243,6 +309,7 @@ HTML = """
         </select>
         <select id="teach-labware"></select>
         <button class="btn" onclick="teachLabware()">Set</button>
+        <button class="btn" onclick="undoTeach()" style="border-color:#fbbf24;color:#fbbf24">Undo</button>
       </div>
       <div class="teach-row" style="margin-top:6px">
         <input type="text" id="teach-label" placeholder="Label (e.g. tip_top)" style="width:160px">
@@ -251,40 +318,74 @@ HTML = """
       </div>
     </div>
 
+    <!-- Teach checklist -->
+    <div style="margin-top:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <h2 style="font-size:14px;color:#60a5fa;">TEACH CHECKLIST</h2>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <span style="font-size:11px;color:#64748b;">Go To:</span>
+          <button class="btn small active" id="btn-goto-z" onclick="setGotoMode('z')">Z only</button>
+          <button class="btn small" id="btn-goto-xyz" onclick="setGotoMode('xyz')">XYZ</button>
+        </div>
+      </div>
+      <div id="teach-checklist" style="font-size:11px;font-family:monospace;"></div>
+    </div>
+
     <!-- Quick actions -->
     <div style="margin-top:12px;">
-      <h2 style="font-size:14px;color:#e94560;margin-bottom:8px;">ACTIONS</h2>
+      <h2 style="font-size:14px;color:#60a5fa;margin-bottom:8px;">ACTIONS</h2>
       <div class="controls">
         <button class="btn" onclick="sendAction('home')">Home LiHa</button>
         <button class="btn" onclick="sendAction('z_up')">Z Up (Clear)</button>
         <button class="btn" onclick="sendAction('park_roma')">Park RoMa</button>
         <button class="btn" onclick="sendAction('tips_status')">Check Tips</button>
-        <button class="btn" onclick="sendAction('eject_tips')" style="border-color:#e9c46a">Eject Tips</button>
+        <button class="btn" onclick="sendAction('eject_tips')" style="border-color:#fbbf24">Eject Tips</button>
         <button class="btn" onclick="sendAction('ree')">Axis Status</button>
       </div>
       <details style="margin-top:4px">
-        <summary style="cursor:pointer;font-size:11px;color:#666">Lamp & Power Controls</summary>
+        <summary style="cursor:pointer;font-size:11px;color:#334155">Lamp & Power Controls</summary>
         <div class="controls" style="margin-top:4px">
-          <button class="btn small" onclick="sendAction('lamp_green')" style="border-color:#4ec9b0">Lamp Green</button>
+          <button class="btn small" onclick="sendAction('lamp_green')" style="border-color:#34d399">Lamp Green</button>
           <button class="btn small" onclick="sendAction('lamp_off')">Lamp Off</button>
           <button class="btn small" onclick="sendAction('lamp_test')">Lamp Test</button>
-          <button class="btn small" onclick="sendAction('power_on')" style="border-color:#e9c46a">Motor Power</button>
+          <button class="btn small" onclick="sendAction('power_on')" style="border-color:#fbbf24">Motor Power</button>
           <button class="btn small" onclick="sendAction('power_off')">Power Off</button>
         </div>
       </details>
     </div>
 
+    <!-- Tip Management -->
+    <div style="margin-top:12px;">
+      <h2 style="font-size:14px;color:#60a5fa;margin-bottom:8px;">TIP MANAGEMENT</h2>
+      <div class="controls" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <select id="tip-type" style="background:#1e293b;color:#e2e8f0;border:1px solid #334155;padding:4px 8px;border-radius:4px;">
+          <option value="50">50uL (rail 4)</option>
+          <option value="200">200uL (rail 16)</option>
+          <option value="1000">1000uL (rail 26)</option>
+        </select>
+        <label style="font-size:12px;color:#64748b;">Col:</label>
+        <input type="number" id="tip-col" value="1" min="1" max="12" style="width:50px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;padding:4px;border-radius:4px;">
+        <button class="btn" onclick="pickUpTips()" style="border-color:#34d399">Pick Up</button>
+        <button class="btn" onclick="dropTips()" style="border-color:#fbbf24">Drop</button>
+      </div>
+    </div>
+
     <!-- Saved positions -->
     <div class="saved-positions" style="margin-top:12px;">
-      <h2 style="font-size:14px;color:#e94560;margin-bottom:8px;">SAVED POSITIONS</h2>
+      <h2 style="font-size:14px;color:#60a5fa;margin-bottom:8px;">SAVED POSITIONS</h2>
       <div id="saved-list"></div>
     </div>
 
-    <!-- Log -->
-    <div style="margin-top:12px;">
-      <h2 style="font-size:14px;color:#e94560;margin-bottom:8px;">LOG</h2>
-      <div class="log" id="log"></div>
-    </div>
+  </div>
+</div>
+
+<!-- XYZ Confirmation Modal -->
+<div class="confirm-modal" id="confirm-modal">
+  <div class="confirm-box">
+    <h3>Confirm XY Move</h3>
+    <div id="confirm-msg">Move LiHa to labware position?</div>
+    <div class="coords" id="confirm-coords">X=0.0  Y=0.0  Z=0.0</div>
+    <div class="hint">Press <span class="key">Enter</span> to move &nbsp; <span class="key">Esc</span> to cancel</div>
   </div>
 </div>
 
@@ -293,16 +394,35 @@ let arm = 'liha';
 let stepIdx = 4;
 const STEPS = [0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0];
 const TIP_EXT = {none: 0, '50ul': 470, '200ul': 475, '1000ul': 851};
+let gotoMode = 'z';
+let pendingGoto = null;
+
+function setGotoMode(mode) {
+  gotoMode = mode;
+  document.getElementById('btn-goto-z').className = 'btn small' + (mode==='z' ? ' active' : '');
+  document.getElementById('btn-goto-xyz').className = 'btn small' + (mode==='xyz' ? ' active' : '');
+}
 
 function updateTipInfo() {
   const tip = document.getElementById('teach-tip-type').value;
   const ext = TIP_EXT[tip] || 0;
   const info = document.getElementById('tip-ext-info');
+  const zLabel = document.getElementById('input-z-label');
+  const hint = document.getElementById('input-coords-hint');
+  // Sync tip management dropdown
+  const mgmt = TEACH_TO_MGMT[tip];
+  if (mgmt) document.getElementById('tip-type').value = mgmt;
   if (ext > 0) {
     info.textContent = 'Z offset: -' + ext + ' (' + (ext/10).toFixed(1) + 'mm)';
-    info.style.color = '#e9c46a';
+    info.style.color = '#fbbf24';
+    zLabel.textContent = 'Z tip';
+    zLabel.style.color = '#fbbf24';
+    hint.textContent = 'mm — Z = tip end position';
   } else {
     info.textContent = '';
+    zLabel.textContent = 'Z';
+    zLabel.style.color = '#aaa';
+    hint.textContent = 'mm (Tecan coords)';
   }
 }
 let polling = null;
@@ -328,6 +448,19 @@ function log(msg, cls) {
   el.scrollTop = el.scrollHeight;
 }
 
+const TEACH_TO_MGMT = {'50ul': '50', '200ul': '200', '1000ul': '1000'};
+const MGMT_TO_TEACH = {'50': '50ul', '200': '200ul', '1000': '1000ul'};
+
+function syncMountedTip(data) {
+  if (data && data.mounted_tip !== undefined) {
+    document.getElementById('teach-tip-type').value = data.mounted_tip;
+    const mgmt = TEACH_TO_MGMT[data.mounted_tip];
+    if (mgmt) document.getElementById('tip-type').value = mgmt;
+    updateTipInfo();
+    log('  Tips: ' + (data.mounted_tip === 'none' ? 'none mounted' : data.mounted_tip + ' mounted'), 'ok');
+  }
+}
+
 let busy = false;
 
 async function sendJog(armName, axis, direction) {
@@ -335,7 +468,7 @@ async function sendJog(armName, axis, direction) {
   if (busy) { log('Busy — wait for move to finish', 'err'); return; }
   busy = true;
   document.getElementById('status').textContent = 'Moving...';
-  document.getElementById('status').style.color = '#e9c46a';
+  document.getElementById('status').style.color = '#fbbf24';
   const cmd = armName.toUpperCase() + ' ' + axis + (direction > 0 ? '+' : '-') + ' ' + STEPS[stepIdx] + 'mm';
   log('> ' + cmd, '');
   try {
@@ -354,7 +487,7 @@ async function sendJog(armName, axis, direction) {
   finally {
     busy = false;
     document.getElementById('status').textContent = 'Connected';
-    document.getElementById('status').style.color = '#4ec9b0';
+    document.getElementById('status').style.color = '#34d399';
   }
 }
 
@@ -362,7 +495,7 @@ async function sendAction(action) {
   if (busy) { log('Busy — wait for current operation', 'err'); return; }
   busy = true;
   document.getElementById('status').textContent = 'Busy...';
-  document.getElementById('status').style.color = '#e9c46a';
+  document.getElementById('status').style.color = '#fbbf24';
   log('> ACTION: ' + action, '');
   try {
     const resp = await fetch('/action', {
@@ -374,12 +507,69 @@ async function sendAction(action) {
     if (data.message) log('  ' + data.message, 'ok');
     if (data.error) log('  ' + data.error, 'err');
     updatePositions(data);
+    syncMountedTip(data);
     if (data.saved) loadSaved();
   } catch(e) { log('  Action failed: ' + e, 'err'); }
   finally {
     busy = false;
     document.getElementById('status').textContent = 'Connected';
-    document.getElementById('status').style.color = '#4ec9b0';
+    document.getElementById('status').style.color = '#34d399';
+  }
+}
+
+async function pickUpTips() {
+  const tipType = document.getElementById('tip-type').value;
+  const col = parseInt(document.getElementById('tip-col').value);
+  if (col < 1 || col > 12) { log('Column must be 1-12', 'err'); return; }
+  if (busy) { log('Busy — wait for current operation', 'err'); return; }
+  busy = true;
+  document.getElementById('status').textContent = 'Picking up tips...';
+  document.getElementById('status').style.color = '#fbbf24';
+  log('> PICK UP: ' + tipType + 'uL tips, col ' + col, '');
+  try {
+    const resp = await fetch('/action', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action: 'pick_up_tips', tip_type: tipType, column: col})
+    });
+    const data = await resp.json();
+    if (data.message) log('  ' + data.message, 'ok');
+    if (data.error) log('  ' + data.error, 'err');
+    updatePositions(data);
+    syncMountedTip(data);
+  } catch(e) { log('  Pick up failed: ' + e, 'err'); }
+  finally {
+    busy = false;
+    document.getElementById('status').textContent = 'Connected';
+    document.getElementById('status').style.color = '#34d399';
+  }
+}
+
+async function dropTips() {
+  const tipType = document.getElementById('tip-type').value;
+  const col = parseInt(document.getElementById('tip-col').value);
+  if (col < 1 || col > 12) { log('Column must be 1-12', 'err'); return; }
+  if (busy) { log('Busy — wait for current operation', 'err'); return; }
+  busy = true;
+  document.getElementById('status').textContent = 'Dropping tips...';
+  document.getElementById('status').style.color = '#fbbf24';
+  log('> DROP: ' + tipType + 'uL tips, col ' + col, '');
+  try {
+    const resp = await fetch('/action', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action: 'drop_tips', tip_type: tipType, column: col})
+    });
+    const data = await resp.json();
+    if (data.message) log('  ' + data.message, 'ok');
+    if (data.error) log('  ' + data.error, 'err');
+    updatePositions(data);
+    syncMountedTip(data);
+  } catch(e) { log('  Drop failed: ' + e, 'err'); }
+  finally {
+    busy = false;
+    document.getElementById('status').textContent = 'Connected';
+    document.getElementById('status').style.color = '#34d399';
   }
 }
 
@@ -418,6 +608,33 @@ async function teachLabware() {
   } catch(e) { log('  Teach failed: ' + e, 'err'); }
 }
 
+async function inlineTeach(labwareName, field) {
+  const tipType = getMountedTip();
+  const ext = TIP_EXT[tipType] || 0;
+  const extLabel = ext > 0 ? ' (tip offset: -' + ext + ')' : '';
+  log('> TEACH: ' + labwareName + '.' + field + ' = current Z' + extLabel, '');
+  try {
+    const resp = await fetch('/teach', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({field: field, labware: labwareName, tip_type: tipType})
+    });
+    const data = await resp.json();
+    log('  ' + (data.message || data.error), data.error ? 'err' : 'ok');
+    loadLabware();
+  } catch(e) { log('  Teach failed: ' + e, 'err'); }
+}
+
+async function undoTeach() {
+  log('> UNDO last teach', '');
+  try {
+    const resp = await fetch('/undo_teach', {method: 'POST'});
+    const data = await resp.json();
+    log('  ' + (data.message || data.error), data.error ? 'err' : 'ok');
+    loadLabware();
+  } catch(e) { log('  Undo failed: ' + e, 'err'); }
+}
+
 function updatePositions(data) {
   if (data.liha) {
     document.getElementById('liha-x').textContent = (data.liha.x/10).toFixed(1) + ' mm';
@@ -426,6 +643,19 @@ function updatePositions(data) {
     document.getElementById('liha-x-bar').style.width = Math.min(100, data.liha.x/100) + '%';
     document.getElementById('liha-y-bar').style.width = Math.min(100, data.liha.y/30) + '%';
     document.getElementById('liha-z-bar').style.width = Math.min(100, data.liha.z/21) + '%';
+    // Tip offset display
+    const tipType = getMountedTip();
+    const tipExt = TIP_EXT[tipType] || 0;
+    const showTip = tipExt > 0;
+    ['liha-ztip-row1','liha-ztip-row2','liha-ztip-row3'].forEach(id =>
+      document.getElementById(id).style.display = showTip ? '' : 'none');
+    document.getElementById('liha-tip-label').style.display = showTip ? 'block' : 'none';
+    if (showTip) {
+      const tipZ = data.liha.z - tipExt;
+      document.getElementById('liha-ztip').textContent = (tipZ/10).toFixed(1) + ' mm';
+      document.getElementById('liha-ztip-bar').style.width = Math.min(100, Math.max(0, tipZ/21)) + '%';
+      document.getElementById('liha-tip-label').textContent = tipType + ' (tip extends ' + (tipExt/10).toFixed(1) + 'mm below channel)';
+    }
   }
   if (data.roma) {
     document.getElementById('roma-x').textContent = (data.roma.x/10).toFixed(1) + ' mm';
@@ -441,6 +671,15 @@ function updatePositions(data) {
       document.getElementById('roma-g-bar').style.width = Math.min(100, data.roma.g/10) + '%';
     }
   }
+  // Update compact readout
+  const ro = document.getElementById('pos-readout');
+  if (ro) {
+    let txt = '';
+    if (data.liha) txt += 'LiHa: X=' + (data.liha.x/10).toFixed(1) + '  Y=' + (data.liha.y/10).toFixed(1) + '  Z=' + (data.liha.z/10).toFixed(1);
+    if (data.roma) txt += (txt ? '  |  ' : '') + 'RoMa: X=' + (data.roma.x/10).toFixed(1) + '  Y=' + (data.roma.y/10).toFixed(1) + '  Z=' + (data.roma.z/10).toFixed(1);
+    ro.textContent = txt || 'No position data';
+  }
+  updateDeckArm(data);
 }
 
 async function pollPositions() {
@@ -453,7 +692,7 @@ async function pollPositions() {
     updatePositions(data);
   } catch(e) {
     document.getElementById('status').textContent = 'Disconnected';
-    document.getElementById('status').style.color = '#e94560';
+    document.getElementById('status').style.color = '#60a5fa';
   }
 }
 
@@ -467,11 +706,11 @@ async function loadSaved() {
       const div = document.createElement('div');
       div.className = 'saved-pos';
       if (pos.arm === 'roma') {
-        div.innerHTML = '<span>' + label + ' <span style="color:#0f3460;font-size:10px">[RoMa]</span></span>' +
-          '<span style="color:#888">X=' + pos.x + ' Y=' + pos.y + ' Z=' + pos.z + ' R=' + pos.r + ' G=' + pos.g + '</span>';
+        div.innerHTML = '<span>' + label + ' <span style="color:#334155;font-size:10px">[RoMa]</span></span>' +
+          '<span style="color:#64748b">X=' + pos.x + ' Y=' + pos.y + ' Z=' + pos.z + ' R=' + pos.r + ' G=' + pos.g + '</span>';
       } else {
-        div.innerHTML = '<span>' + label + ' <span style="color:#0f3460;font-size:10px">[LiHa]</span></span>' +
-          '<span style="color:#888">X=' + pos.x + ' Y=' + pos.y + ' Z1=' + (pos.z ? pos.z[0] : '?') + '</span>';
+        div.innerHTML = '<span>' + label + ' <span style="color:#334155;font-size:10px">[LiHa]</span></span>' +
+          '<span style="color:#64748b">X=' + pos.x + ' Y=' + pos.y + ' Z1=' + (pos.z ? pos.z[0] : '?') + '</span>';
       }
       list.appendChild(div);
     }
@@ -480,6 +719,9 @@ async function loadSaved() {
 
 // Keyboard handler
 document.addEventListener('keydown', function(e) {
+  // Skip jog keys when typing in input fields
+  if (e.target.tagName.match(/INPUT|SELECT|TEXTAREA/i)) return;
+
   // Prevent page scrolling for arrow keys
   if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','PageUp','PageDown','Home','End'].includes(e.key)) {
     e.preventDefault();
@@ -488,12 +730,12 @@ document.addEventListener('keydown', function(e) {
   // LiHa numpad
   if (e.key === '4' || e.code === 'Numpad4') { sendJog('liha', 'x', -1); return; }
   if (e.key === '6' || e.code === 'Numpad6') { sendJog('liha', 'x', 1); return; }
-  if (e.key === '8' || e.code === 'Numpad8') { sendJog('liha', 'y', 1); return; }
-  if (e.key === '2' || e.code === 'Numpad2') { sendJog('liha', 'y', -1); return; }
-  if (e.code === 'NumpadAdd' || (e.key === '+' && !e.target.tagName.match(/INPUT/i))) {
-    sendJog('liha', 'z', 1); return; }   // + = up (away from deck, increase Z)
-  if (e.code === 'NumpadSubtract' || (e.key === '-' && !e.target.tagName.match(/INPUT/i))) {
-    sendJog('liha', 'z', -1); return; }  // - = down (toward deck, decrease Z)
+  if (e.key === '8' || e.code === 'Numpad8') { sendJog('liha', 'y', -1); return; }  // 8 = back (away from operator)
+  if (e.key === '2' || e.code === 'Numpad2') { sendJog('liha', 'y', 1); return; }   // 2 = forward (toward operator)
+  if (e.code === 'NumpadAdd' || e.key === '+') {
+    sendJog('liha', 'z', -1); return; }  // + = down (toward deck, decrease Z)
+  if (e.code === 'NumpadSubtract' || e.key === '-') {
+    sendJog('liha', 'z', 1); return; }   // - = up (away from deck, increase Z)
   if (e.key === '7' || e.code === 'Numpad7') {
     stepIdx = Math.max(0, stepIdx - 1); updateStep(); return; }
   if (e.key === '9' || e.code === 'Numpad9') {
@@ -508,8 +750,8 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'PageDown') { sendJog('roma', 'z', -1); return; } // down
   if (e.key === 'Home') { sendJog('roma', 'r', -1); return; }
   if (e.key === 'End') { sendJog('roma', 'r', 1); return; }
-  if (e.key === '[' && !e.target.tagName.match(/INPUT/i)) { sendJog('roma', 'g', -1); return; }
-  if (e.key === ']' && !e.target.tagName.match(/INPUT/i)) { sendJog('roma', 'g', 1); return; }
+  if (e.key === '[') { sendJog('roma', 'g', -1); return; }
+  if (e.key === ']') { sendJog('roma', 'g', 1); return; }
 });
 
 let isConnected = false;
@@ -529,7 +771,7 @@ async function toggleConnect() {
     btn.textContent = 'Connecting...';
     btn.disabled = true;
     status.textContent = 'Connecting...';
-    status.style.color = '#e9c46a';
+    status.style.color = '#fbbf24';
     log('> Connecting to EVO...', '');
     try {
       const resp = await fetch('/connect', {method: 'POST'});
@@ -548,18 +790,190 @@ function updateConnectButton() {
   btn.disabled = false;
   if (isConnected) {
     btn.textContent = 'Disconnect';
-    btn.style.background = '#e94560';
+    btn.style.background = '#60a5fa';
     status.textContent = 'Connected';
-    status.style.color = '#4ec9b0';
+    status.style.color = '#34d399';
   } else {
     btn.textContent = 'Connect';
-    btn.style.background = '#0f3460';
+    btn.style.background = '#334155';
     status.textContent = 'Disconnected';
-    status.style.color = '#888';
+    status.style.color = '#64748b';
   }
 }
 
 let labwareData = {};
+
+const TEACH_ITEMS = {
+  'TecanPlate': [
+    {field: 'z_start', tip: true, label: 'z_start', desc: 'Just above plate top'},
+    {field: 'z_dispense', tip: true, label: 'z_dispense', desc: 'Dispense height inside well'},
+    {field: 'z_max', tip: true, label: 'z_max', desc: 'Max safe depth (near well bottom)'},
+  ],
+  'TecanTipRack': [
+    {field: 'z_start', tip: false, label: 'z_start', desc: 'Just above tip tops (bare channel)'},
+    {field: 'z_max', tip: false, label: 'z_max', desc: 'Bottom of tip search range (bare channel)'},
+  ],
+};
+
+function buildTeachChecklist() {
+  const el = document.getElementById('teach-checklist');
+  if (!el || !labwareData) return;
+  let html = '';
+  for (const [name, lw] of Object.entries(labwareData)) {
+    const items = TEACH_ITEMS[lw.type];
+    if (!items) continue;
+    html += '<div style="margin-bottom:8px;padding:6px;background:#1e293b;border-radius:4px;border:1px solid #334155;">';
+    html += '<div style="color:#60a5fa;font-weight:bold;margin-bottom:4px;">' + name + ' <span style="color:#334155;font-weight:normal">(' + lw.model + ')</span></div>';
+    for (const item of items) {
+      const val = lw[item.field];
+      const edited = lw['edited_' + item.field];
+      const hasDefault = val !== undefined && val !== null;
+      let statusIcon, statusColor;
+      if (edited) {
+        statusIcon = '✓';
+        statusColor = '#34d399';
+      } else if (hasDefault) {
+        statusIcon = '~';
+        statusColor = '#fbbf24';
+      } else {
+        statusIcon = '✗';
+        statusColor = '#60a5fa';
+      }
+      const valStr = hasDefault ? val + ' (' + (val/10).toFixed(1) + 'mm)' : 'not set';
+      const tipNote = item.tip ? ' [tips mounted]' : ' [bare channel]';
+      html += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0;">';
+      html += '<span style="color:' + statusColor + ';width:14px;text-align:center;">' + statusIcon + '</span>';
+      html += '<button class="btn small" style="padding:2px 6px;font-size:10px;" ';
+      html += 'onclick="setupTeach(\\\'' + name + '\\\',\\\'' + item.field + '\\\',' + item.tip + ')">';
+      html += item.label + '</button>';
+      html += '<span style="color:#64748b;">' + item.desc + tipNote + '</span>';
+      html += '<span style="color:#cbd5e1;margin-left:auto;">' + valStr + '</span>';
+      if (edited) html += '<span style="color:#fbbf24;margin-left:4px;">TAUGHT</span>';
+      if (hasDefault) {
+        html += '<button class="btn small" style="padding:1px 6px;font-size:10px;margin-left:4px;border-color:#34d399;color:#34d399;" ';
+        html += 'onclick="goToTeachPoint(\\\'' + name + '\\\',\\\'' + item.field + '\\\')">Go</button>';
+      }
+      html += '<button class="btn small" style="padding:1px 6px;font-size:10px;margin-left:2px;border-color:#fbbf24;color:#fbbf24;" ';
+      html += 'onclick="inlineTeach(\\\'' + name + '\\\',\\\'' + item.field + '\\\')">Set</button>';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+  if (!html) html = '<div style="color:#334155">No labware on deck</div>';
+  el.innerHTML = html;
+}
+
+function getMountedTip() { return document.getElementById('teach-tip-type').value; }
+
+async function goToTeachPoint(labwareName, field) {
+  // Auto-select this as the active teach point
+  document.getElementById('teach-labware').value = labwareName;
+  document.getElementById('teach-field').value = field;
+  showLabware(labwareName);
+
+  if (!isConnected) { log('Not connected', 'err'); return; }
+  if (busy) { log('Busy — wait for current operation', 'err'); return; }
+  busy = true;
+  document.getElementById('status').textContent = 'Moving...';
+  document.getElementById('status').style.color = '#fbbf24';
+  const tipType = getMountedTip();
+  const tipLabel = tipType !== 'none' ? ' [' + tipType + ' tips]' : ' [bare]';
+
+  if (gotoMode === 'z') {
+    log('> GO TO (Z): ' + labwareName + '.' + field + tipLabel, '');
+    try {
+      const resp = await fetch('/goto', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({labware: labwareName, field: field, mode: 'z', tip_type: tipType})
+      });
+      const data = await resp.json();
+      if (data.error) { log('  ' + data.error, 'err'); }
+      else {
+        if (data.message) log('  ' + data.message, 'ok');
+        updatePositions(data);
+      }
+    } catch(e) { log('  Go To failed: ' + e, 'err'); }
+    finally {
+      busy = false;
+      document.getElementById('status').textContent = 'Connected';
+      document.getElementById('status').style.color = '#34d399';
+    }
+  } else {
+    log('> GO TO (XYZ): ' + labwareName + '.' + field + tipLabel + ' — raising Z...', '');
+    try {
+      const resp = await fetch('/goto', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({labware: labwareName, field: field, mode: 'xyz', confirm: false, tip_type: tipType})
+      });
+      const data = await resp.json();
+      if (data.error) { log('  ' + data.error, 'err'); busy = false; return; }
+      updatePositions(data);
+      log('  Z raised. Target: X=' + (data.target_x/10).toFixed(1) + ' Y=' + (data.target_y/10).toFixed(1) + ' Z=' + (data.target_z/10).toFixed(1), '');
+      pendingGoto = {labware: labwareName, field: field, target_x: data.target_x, target_y: data.target_y, target_z: data.target_z, tip_type: tipType};
+      document.getElementById('confirm-msg').textContent = 'Move LiHa to ' + labwareName + '?';
+      document.getElementById('confirm-coords').textContent = 'X=' + (data.target_x/10).toFixed(1) + '  Y=' + (data.target_y/10).toFixed(1) + '  Z=' + (data.target_z/10).toFixed(1);
+      document.getElementById('confirm-modal').classList.add('visible');
+    } catch(e) {
+      log('  Go To failed: ' + e, 'err');
+      busy = false;
+      document.getElementById('status').textContent = 'Connected';
+      document.getElementById('status').style.color = '#34d399';
+    }
+  }
+}
+
+async function confirmGoto() {
+  const modal = document.getElementById('confirm-modal');
+  modal.classList.remove('visible');
+  if (!pendingGoto) { busy = false; return; }
+  log('  Confirmed — moving X/Y/Z...', 'ok');
+  try {
+    const resp = await fetch('/goto', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({labware: pendingGoto.labware, field: pendingGoto.field, mode: 'xyz', confirm: true, tip_type: pendingGoto.tip_type})
+    });
+    const data = await resp.json();
+    if (data.error) { log('  ' + data.error, 'err'); }
+    else {
+      if (data.message) log('  ' + data.message, 'ok');
+      updatePositions(data);
+    }
+  } catch(e) { log('  Move failed: ' + e, 'err'); }
+  finally {
+    pendingGoto = null;
+    busy = false;
+    document.getElementById('status').textContent = 'Connected';
+    document.getElementById('status').style.color = '#34d399';
+  }
+}
+
+function cancelGoto() {
+  document.getElementById('confirm-modal').classList.remove('visible');
+  log('  XY move cancelled — Z remains raised', 'err');
+  pendingGoto = null;
+  busy = false;
+  document.getElementById('status').textContent = 'Connected';
+  document.getElementById('status').style.color = '#34d399';
+}
+
+document.addEventListener('keydown', function(e) {
+  if (document.getElementById('confirm-modal').classList.contains('visible')) {
+    if (e.key === 'Enter') { e.preventDefault(); confirmGoto(); }
+    if (e.key === 'Escape') { e.preventDefault(); cancelGoto(); }
+  }
+});
+
+function setupTeach(labwareName, field, needsTips) {
+  document.getElementById('teach-labware').value = labwareName;
+  document.getElementById('teach-field').value = field;
+  showLabware(labwareName);
+  const tipMsg = needsTips ? ' (mount tips first!)' : ' (bare channel)';
+  log('> Ready to teach: ' + labwareName + '.' + field + tipMsg, 'ok');
+  log('  Jog to position, then click SET or press Enter', '');
+}
 
 async function loadLabware() {
   try {
@@ -583,8 +997,155 @@ async function loadLabware() {
     // Show first by default
     const first = Object.keys(labwareData)[0];
     if (first) showLabware(first);
+    buildTeachChecklist();
+    renderDeckMap();
   } catch(e) { log('Failed to load labware: ' + e, 'err'); }
 }
+
+const DECK_W = 1315, DECK_H = 400;
+const DECK_SCALE = 960 / DECK_W;
+const DECK_COLORS = { TecanPlate: '#60a5fa', TecanTipRack: '#34d399' };
+
+function renderDeckMap() {
+  const g = document.getElementById('deck-labware');
+  if (!g) return;
+  g.innerHTML = '';
+  for (const [name, lw] of Object.entries(labwareData)) {
+    const sx = lw.loc_x * DECK_SCALE;
+    const sy = (DECK_H - lw.loc_y - lw.size_y) * DECK_SCALE;
+    const sw = lw.size_x * DECK_SCALE;
+    const sh = lw.size_y * DECK_SCALE;
+    const color = DECK_COLORS[lw.type] || '#334155';
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('class', 'lw-rect');
+    rect.setAttribute('x', sx);
+    rect.setAttribute('y', sy);
+    rect.setAttribute('width', sw);
+    rect.setAttribute('height', sh);
+    rect.setAttribute('fill', color);
+    rect.setAttribute('rx', '3');
+    rect.onclick = function() { showLabware(name); };
+    g.appendChild(rect);
+    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    label.setAttribute('class', 'lw-label');
+    label.setAttribute('x', sx + sw / 2);
+    label.setAttribute('y', sy + sh / 2 + 3);
+    label.setAttribute('text-anchor', 'middle');
+    label.textContent = name.replace('_r', ' R').replace('tips_', 'T');
+    g.appendChild(label);
+  }
+}
+
+function updateDeckArm(data) {
+  const g = document.getElementById('deck-arm');
+  if (!g) return;
+  g.innerHTML = '';
+  function drawMarker(pos, color, label, yOff) {
+    if (!pos) return;
+    const px = ((pos.x / 10 + 100) * DECK_SCALE);
+    const py = ((DECK_H - (346.5 - pos.y / 10)) * DECK_SCALE);
+    const cross = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    cross.innerHTML =
+      '<line x1="' + (px-6) + '" y1="' + py + '" x2="' + (px+6) + '" y2="' + py + '" stroke="' + color + '" stroke-width="2"/>' +
+      '<line x1="' + px + '" y1="' + (py-6) + '" x2="' + px + '" y2="' + (py+6) + '" stroke="' + color + '" stroke-width="2"/>' +
+      '<circle cx="' + px + '" cy="' + py + '" r="3" fill="' + color + '" opacity="0.6"/>' +
+      '<text x="' + (px+8) + '" y="' + (py + (yOff||0)) + '" fill="' + color + '" font-size="8" font-family="sans-serif">' + label + '</text>';
+    g.appendChild(cross);
+  }
+  drawMarker(data.liha, '#f87171', 'LiHa', -2);
+  drawMarker(data.roma, '#5eead4', 'RoMa', 10);
+}
+
+function deckClick(e) {
+  if (!isConnected || busy) return;
+  const svg = document.getElementById('deck-svg');
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX;
+  pt.y = e.clientY;
+  const svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
+  const plr_x = svgPt.x / DECK_SCALE;
+  const plr_y = DECK_H - svgPt.y / DECK_SCALE;
+  const tecan_x = Math.round((plr_x - 100) * 10);
+  const tecan_y = Math.round((346.5 - plr_y) * 10);
+  if (tecan_x < 0 || tecan_y < 0) return;
+  log('> MOVE XY: X=' + (tecan_x/10).toFixed(1) + ' Y=' + (tecan_y/10).toFixed(1), '');
+  moveXY(tecan_x, tecan_y);
+}
+
+async function moveXY(tx, ty) {
+  busy = true;
+  document.getElementById('status').textContent = 'Moving...';
+  document.getElementById('status').style.color = '#fbbf24';
+  try {
+    const resp = await fetch('/move_xy', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({x: tx, y: ty})
+    });
+    const data = await resp.json();
+    if (data.error) { log('  ' + data.error, 'err'); }
+    else {
+      if (data.message) log('  ' + data.message, 'ok');
+      updatePositions(data);
+    }
+  } catch(e) { log('  Move failed: ' + e, 'err'); }
+  finally {
+    busy = false;
+    document.getElementById('status').textContent = 'Connected';
+    document.getElementById('status').style.color = '#34d399';
+  }
+}
+
+async function directMove() {
+  if (!isConnected) { log('Not connected', 'err'); return; }
+  if (busy) { log('Busy — wait for current operation', 'err'); return; }
+  const xEl = document.getElementById('input-x');
+  const yEl = document.getElementById('input-y');
+  const zEl = document.getElementById('input-z');
+  const xMm = parseFloat(xEl.value);
+  const yMm = parseFloat(yEl.value);
+  const zMm = parseFloat(zEl.value);
+  const hasX = !isNaN(xMm);
+  const hasY = !isNaN(yMm);
+  const hasZ = !isNaN(zMm);
+  if (!hasX && !hasY && !hasZ) { log('Enter at least one coordinate', 'err'); return; }
+  const tipType = getMountedTip();
+  const tipExt = TIP_EXT[tipType] || 0;
+  const parts = [];
+  if (hasX) parts.push('X=' + xMm.toFixed(1));
+  if (hasY) parts.push('Y=' + yMm.toFixed(1));
+  if (hasZ) parts.push('Z=' + zMm.toFixed(1) + (tipExt ? ' tip end' : ''));
+  if (tipExt) parts.push('[' + tipType + ']');
+  log('> DIRECT MOVE: ' + parts.join(' '), '');
+  busy = true;
+  document.getElementById('status').textContent = 'Moving...';
+  document.getElementById('status').style.color = '#fbbf24';
+  try {
+    const resp = await fetch('/direct_move', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        x: hasX ? Math.round(xMm * 10) : null,
+        y: hasY ? Math.round(yMm * 10) : null,
+        z: hasZ ? Math.round(zMm * 10) : null,
+        tip_type: tipType
+      })
+    });
+    const data = await resp.json();
+    if (data.error) { log('  ' + data.error, 'err'); }
+    else {
+      if (data.message) log('  ' + data.message, 'ok');
+      updatePositions(data);
+    }
+  } catch(e) { log('  Direct move failed: ' + e, 'err'); }
+  finally {
+    busy = false;
+    document.getElementById('status').textContent = 'Connected';
+    document.getElementById('status').style.color = '#34d399';
+  }
+}
+
+document.getElementById('deck-svg').addEventListener('click', deckClick);
 
 function showLabware(name) {
   const lw = labwareData[name];
@@ -597,19 +1158,20 @@ function showLabware(name) {
   document.getElementById('teach-labware').value = name;
 
   let html = '<div style="margin-bottom:8px">';
-  html += '<b style="color:#e94560;font-size:13px">' + name + '</b>';
-  html += '<span style="color:#666;margin-left:8px">' + lw.type + '</span>';
+  html += '<b style="color:#60a5fa;font-size:13px">' + name + '</b>';
+  html += '<span style="color:#334155;margin-left:8px">' + lw.type + '</span>';
   html += '</div>';
-  html += '<div style="color:#888;margin-bottom:6px">' + lw.model + '</div>';
+  html += '<div style="color:#64748b;margin-bottom:6px">' + lw.model + '</div>';
   html += '<table style="width:100%;font-family:monospace;font-size:11px;border-collapse:collapse">';
 
   const rows = [
     ['Size', lw.size_x + ' x ' + lw.size_y + ' x ' + lw.size_z + ' mm'],
-    ['Location (deck)', 'x=' + lw.loc_x + '  y=' + lw.loc_y + '  z=' + lw.loc_z + ' mm'],
+    ['Location (PLR)', 'x=' + lw.loc_x + '  y=' + lw.loc_y + '  z=' + lw.loc_z + ' mm'],
+    ['Tecan center', 'X=' + (lw.tecan_x/10).toFixed(1) + '  Y=' + (lw.tecan_y/10).toFixed(1) + ' mm'],
   ];
-  if (lw.z_start !== undefined) rows.push(['z_start', lw.z_start + ' (' + (lw.z_start/10).toFixed(1) + 'mm)' + (lw.edited_z_start ? ' <span style="color:#e9c46a">EDITED</span>' : '')]);
-  if (lw.z_dispense !== undefined) rows.push(['z_dispense', lw.z_dispense + ' (' + (lw.z_dispense/10).toFixed(1) + 'mm)' + (lw.edited_z_dispense ? ' <span style="color:#e9c46a">EDITED</span>' : '')]);
-  if (lw.z_max !== undefined) rows.push(['z_max', lw.z_max + ' (' + (lw.z_max/10).toFixed(1) + 'mm)' + (lw.edited_z_max ? ' <span style="color:#e9c46a">EDITED</span>' : '')]);
+  if (lw.z_start !== undefined) rows.push(['z_start', lw.z_start + ' (' + (lw.z_start/10).toFixed(1) + 'mm)' + (lw.edited_z_start ? ' <span style="color:#fbbf24">EDITED</span>' : '')]);
+  if (lw.z_dispense !== undefined) rows.push(['z_dispense', lw.z_dispense + ' (' + (lw.z_dispense/10).toFixed(1) + 'mm)' + (lw.edited_z_dispense ? ' <span style="color:#fbbf24">EDITED</span>' : '')]);
+  if (lw.z_max !== undefined) rows.push(['z_max', lw.z_max + ' (' + (lw.z_max/10).toFixed(1) + 'mm)' + (lw.edited_z_max ? ' <span style="color:#fbbf24">EDITED</span>' : '')]);
   if (lw.area !== undefined) rows.push(['area', lw.area + ' mm²']);
   if (lw.item_dy !== undefined) rows.push(['well pitch', lw.item_dy + ' mm']);
   if (lw.num_items !== undefined) rows.push(['wells/tips', lw.num_items + ' (' + lw.num_items_x + 'x' + lw.num_items_y + ')']);
@@ -617,7 +1179,7 @@ function showLabware(name) {
   if (lw.tip_type !== undefined) rows.push(['tip type', lw.tip_type]);
 
   for (const [label, val] of rows) {
-    html += '<tr><td style="padding:2px 8px 2px 0;color:#aaa;white-space:nowrap">' + label + '</td>';
+    html += '<tr><td style="padding:2px 8px 2px 0;color:#cbd5e1;white-space:nowrap">' + label + '</td>';
     html += '<td style="padding:2px 0">' + val + '</td></tr>';
   }
   html += '</table>';
@@ -626,9 +1188,14 @@ function showLabware(name) {
 
 // Start polling
 polling = setInterval(pollPositions, 1000);
-pollPositions();
-loadSaved();
-loadLabware();
+try {
+  pollPositions();
+  loadSaved();
+  loadLabware();
+} catch(e) {
+  console.error('Init error:', e);
+  log('INIT ERROR: ' + e.message, 'err');
+}
 </script>
 </body>
 </html>
@@ -706,8 +1273,12 @@ def record():
       return jsonify({"error": str(e)})
 
 
+last_teach_undo = None
+
+
 @app.route("/teach", methods=["POST"])
 def teach():
+  global last_teach_undo
   from labware_library import TIP_TYPES
 
   data = request.json
@@ -720,16 +1291,47 @@ def teach():
     try:
       pos = run_async(get_liha_position())
       raw_z = pos["z"]
-      z_val = raw_z - tip_ext  # subtract tip extension to get bare-channel Z
+      z_val = raw_z - tip_ext
       edits = load_json_file(LABWARE_FILE)
+      old_val = edits.get(labware_name, {}).get(field)
       if labware_name not in edits:
         edits[labware_name] = {}
       edits[labware_name][field] = z_val
       save_json_file(LABWARE_FILE, edits)
+      last_teach_undo = {"labware": labware_name, "field": field, "old_val": old_val, "new_val": z_val}
       tip_msg = f" (raw={raw_z} - tip_ext={tip_ext})" if tip_ext > 0 else ""
       return jsonify({"message": f"{labware_name}.{field} = {z_val} ({z_val / 10:.1f}mm){tip_msg}"})
     except Exception as e:
       return jsonify({"error": str(e)})
+
+
+@app.route("/undo_teach", methods=["POST"])
+def undo_teach():
+  global last_teach_undo
+  if last_teach_undo is None:
+    return jsonify({"error": "Nothing to undo"})
+  lw = last_teach_undo["labware"]
+  field = last_teach_undo["field"]
+  old_val = last_teach_undo["old_val"]
+  new_val = last_teach_undo["new_val"]
+  edits = load_json_file(LABWARE_FILE)
+  if old_val is None:
+    if lw in edits and field in edits[lw]:
+      del edits[lw][field]
+      if not edits[lw]:
+        del edits[lw]
+  else:
+    if lw not in edits:
+      edits[lw] = {}
+    edits[lw][field] = old_val
+  save_json_file(LABWARE_FILE, edits)
+  old_str = f"{old_val} ({old_val / 10:.1f}mm)" if old_val is not None else "default"
+  msg = f"Undo: {lw}.{field} reverted from {new_val} to {old_str}"
+  last_teach_undo = None
+  return jsonify({"message": msg})
+
+
+TIP_TYPE_MAP = {"50": "50ul", "200": "200ul", "1000": "1000ul"}
 
 
 @app.route("/action", methods=["POST"])
@@ -738,10 +1340,105 @@ def action():
   act = data["action"]
   with _usb_lock:
     try:
-      result = run_async(do_action(act))
+      result = run_async(do_action(act, data))
       liha_pos = run_async(get_liha_position())
       roma_pos = run_async(get_roma_position())
-      return jsonify({"message": result, "liha": liha_pos, "roma": roma_pos})
+      resp_data = {"message": result, "liha": liha_pos, "roma": roma_pos}
+      if act == "pick_up_tips":
+        resp_data["mounted_tip"] = TIP_TYPE_MAP.get(data.get("tip_type", ""), "none")
+      elif act in ("drop_tips", "eject_tips"):
+        resp_data["mounted_tip"] = "none"
+      return jsonify(resp_data)
+    except Exception as e:
+      return jsonify({"error": str(e)})
+
+
+@app.route("/goto", methods=["POST"])
+def goto():
+  data = request.json
+  labware_name = data["labware"]
+  field = data["field"]
+  mode = data.get("mode", "z")
+  confirm = data.get("confirm", False)
+  with _usb_lock:
+    try:
+      tip_type = data.get("tip_type", "none")
+      result = run_async(do_goto(labware_name, field, mode, confirm, tip_type))
+      liha_pos = run_async(get_liha_position())
+      roma_pos = run_async(get_roma_position())
+      result["liha"] = liha_pos
+      result["roma"] = roma_pos
+      return jsonify(result)
+    except Exception as e:
+      return jsonify({"error": str(e)})
+
+
+@app.route("/direct_move", methods=["POST"])
+def direct_move():
+  from labware_library import TIP_TYPES
+  data = request.json
+  tx = data.get("x")
+  ty = data.get("y")
+  tz = data.get("z")
+  tip_type = data.get("tip_type", "none")
+  tip_ext = TIP_TYPES.get(tip_type, {}).get("tip_ext", 0)
+  with _usb_lock:
+    try:
+      pip_be = evo.pip.backend
+      z_range = pip_be._z_range
+      num_ch = pip_be.num_channels
+      # Safe sequence: raise Z first if X or Y is changing
+      if tx is not None or ty is not None:
+        z_params = ",".join([str(z_range)] * num_ch)
+        run_async(driver.send_command("C5", command=f"PAZ{z_params}"))
+      if tx is not None:
+        run_async(driver.send_command("C5", command=f"PAX{tx}"))
+      if ty is not None:
+        run_async(driver.send_command("C5", command=f"PAY{ty}"))
+      if tz is not None:
+        # Z input = desired tip-end position; offset by tip extension
+        channel_z = tz + tip_ext
+        channel_z = min(channel_z, z_range)
+        z_params = ",".join([str(channel_z)] * num_ch)
+        run_async(driver.send_command("C5", command=f"PAZ{z_params}"))
+      liha_pos = run_async(get_liha_position())
+      roma_pos = run_async(get_roma_position())
+      parts = []
+      if tx is not None: parts.append(f"X={tx / 10:.1f}")
+      if ty is not None: parts.append(f"Y={ty / 10:.1f}")
+      if tz is not None:
+        tip_msg = f" +tip({tip_ext})" if tip_ext else ""
+        parts.append(f"Z={tz / 10:.1f} tip end{tip_msg}")
+      return jsonify({
+        "message": f"Moved to {' '.join(parts)}",
+        "liha": liha_pos,
+        "roma": roma_pos,
+      })
+    except Exception as e:
+      return jsonify({"error": str(e)})
+
+
+@app.route("/move_xy", methods=["POST"])
+def move_xy():
+  data = request.json
+  tx = data["x"]
+  ty = data["y"]
+  with _usb_lock:
+    try:
+      pip_be = evo.pip.backend
+      z_range = pip_be._z_range
+      num_ch = pip_be.num_channels
+      z_params = ",".join([str(z_range)] * num_ch)
+      run_async(driver.send_command("C5", command=f"PAZ{z_params}"))
+      run_async(driver.send_command("C5", command=f"PAX{tx}"))
+      run_async(driver.send_command("C5", command=f"PAY{ty}"))
+      liha_pos = run_async(get_liha_position())
+      roma_pos = run_async(get_roma_position())
+      return jsonify({
+        "message": f"Moved to X={tx / 10:.1f} Y={ty / 10:.1f} (Z raised)",
+        "liha": liha_pos,
+        "roma": roma_pos,
+      })
     except Exception as e:
       return jsonify({"error": str(e)})
 
@@ -760,6 +1457,11 @@ def labware_info():
   def describe_resource(res, deck_ref, edits):
     """Build info dict for a single labware resource."""
     loc = res.get_location_wrt(deck_ref)
+    # Tecan-native coordinates for center of labware
+    center_x = loc.x + res.get_size_x() / 2
+    center_y = loc.y + res.get_size_y() / 2
+    tecan_x = round((center_x - 100) * 10, 1)
+    tecan_y = round((346.5 - center_y) * 10, 1)
     info = {
       "type": type(res).__name__,
       "model": getattr(res, "model", ""),
@@ -769,6 +1471,8 @@ def labware_info():
       "loc_x": round(loc.x, 1),
       "loc_y": round(loc.y, 1),
       "loc_z": round(loc.z, 1),
+      "tecan_x": tecan_x,
+      "tecan_y": tecan_y,
     }
     for attr in ("z_start", "z_dispense", "z_max", "area"):
       if hasattr(res, attr):
@@ -809,7 +1513,8 @@ def labware_info():
 
   if evo is not None:
     deck_ref = evo.children[0] if evo.children else evo
-    result = find_labware(deck_ref, deck_ref, edits)
+    unsorted = find_labware(deck_ref, deck_ref, edits)
+    result = dict(sorted(unsorted.items(), key=lambda kv: (kv[1]["loc_x"], kv[1]["loc_y"])))
 
   return jsonify(result)
 
@@ -871,8 +1576,135 @@ async def do_jog(arm_name, axis, delta):
       await driver.send_command(module, command=f"PRG{delta}")
 
 
-async def do_action(action):
-  if action == "home":
+ROWS = ["A", "B", "C", "D", "E", "F", "G", "H"]
+
+
+def find_labware_resource(name):
+  """Find a labware resource by name in the deck tree."""
+  def _search(resource):
+    for child in resource.children:
+      if child.name == name:
+        return child
+      found = _search(child)
+      if found:
+        return found
+    return None
+  deck = evo.children[0] if evo.children else evo
+  return _search(deck), deck
+
+
+async def do_goto(labware_name, field, mode, confirm, tip_type="none"):
+  from labware_library import TIP_TYPES
+  res, deck_ref = find_labware_resource(labware_name)
+  if res is None:
+    return {"error": f"Labware '{labware_name}' not found"}
+
+  edits = load_json_file(LABWARE_FILE)
+  if labware_name in edits and field in edits[labware_name]:
+    z_val = edits[labware_name][field]
+  elif hasattr(res, field):
+    z_val = getattr(res, field)
+  else:
+    return {"error": f"{labware_name} has no {field}"}
+
+  pip_be = evo.pip.backend
+  z_range = pip_be._z_range
+  num_ch = pip_be.num_channels
+  tip_ext = TIP_TYPES.get(tip_type, {}).get("tip_ext", 0)
+
+  # PLR → Tecan XY transform (matches pip_backend.py lines 182-183)
+  loc = res.get_location_wrt(deck_ref)
+  if hasattr(res, "get_item"):
+    try:
+      well = res.get_item("A1")
+      well_loc = well.get_location_wrt(deck_ref) + well.center()
+      ref_x = well_loc.x
+      ref_y = well_loc.y
+    except Exception:
+      ref_x = loc.x + res.get_size_x() / 2
+      ref_y = loc.y + res.get_size_y() / 2
+  else:
+    ref_x = loc.x + res.get_size_x() / 2
+    ref_y = loc.y + res.get_size_y() / 2
+  target_x = int((ref_x - 100) * 10)
+  target_y = int((346.5 - ref_y) * 10)
+
+  # Z: bare-channel position + tip extension offset (tips make the arm longer)
+  target_z = int(z_val) + tip_ext
+  target_z = min(target_z, z_range)
+  tip_msg = f" +tip({tip_ext})" if tip_ext > 0 else ""
+
+  if mode == "z":
+    z_params = ",".join([str(target_z)] * num_ch)
+    await driver.send_command("C5", command=f"PAZ{z_params}")
+    return {"message": f"Z={target_z} ({target_z / 10:.1f}mm){tip_msg} for {labware_name}.{field}"}
+
+  # XYZ mode
+  if not confirm:
+    z_params = ",".join([str(z_range)] * num_ch)
+    await driver.send_command("C5", command=f"PAZ{z_params}")
+    return {
+      "message": f"Z raised to {z_range}",
+      "confirm_needed": True,
+      "target_x": target_x,
+      "target_y": target_y,
+      "target_z": target_z,
+    }
+  else:
+    await driver.send_command("C5", command=f"PAX{target_x}")
+    await driver.send_command("C5", command=f"PAY{target_y}")
+    z_params = ",".join([str(target_z)] * num_ch)
+    await driver.send_command("C5", command=f"PAZ{z_params}")
+    return {"message": f"Moved to {labware_name}: X={target_x / 10:.1f} Y={target_y / 10:.1f} Z={target_z / 10:.1f}{tip_msg}"}
+
+
+async def sync_tip_state():
+  """Sync PLR's head tip tracking with hardware RTS."""
+  resp = await driver.send_command("C5", command="RTS")
+  hw_status = resp["data"][0] if resp and resp.get("data") else 0
+  num_ch = evo.pip.num_channels
+  for ch in range(num_ch):
+    hw_has = bool(hw_status & (1 << ch))
+    plr_has = evo.pip.head[ch].has_tip
+    if plr_has and not hw_has:
+      evo.pip.head[ch].remove_tip()
+    # Note: we can't add tips to PLR if we don't know what type — only clear stale state
+
+
+async def do_action(action, data=None):
+  if action == "pick_up_tips":
+    tip_type = data.get("tip_type", "200")
+    col = data.get("column", 1)
+    if tip_type not in tip_racks:
+      return f"Unknown tip type: {tip_type}. Choose 50, 200, or 1000."
+    await sync_tip_state()
+    rack = tip_racks[tip_type]
+    wells = [f"{row}{col}" for row in ROWS]
+    await evo.pip.pick_up_tips(rack.get_items(wells))
+    pip_be = evo.pip.backend
+    z_range = pip_be._z_range
+    num_ch = pip_be.num_channels
+    z_params = ",".join([str(z_range)] * num_ch)
+    await driver.send_command("C5", command=f"PAZ{z_params}")
+    resp = await driver.send_command("C5", command="RTS")
+    status = resp["data"][0] if resp and resp.get("data") else "?"
+    return f"Picked up {tip_type}uL tips from col {col} (RTS={status})"
+  elif action == "drop_tips":
+    tip_type = data.get("tip_type", "200")
+    col = data.get("column", 1)
+    if tip_type not in tip_racks:
+      return f"Unknown tip type: {tip_type}. Choose 50, 200, or 1000."
+    await sync_tip_state()
+    rack = tip_racks[tip_type]
+    wells = [f"{row}{col}" for row in ROWS]
+    await evo.pip.drop_tips(rack.get_items(wells))
+    pip_be = evo.pip.backend
+    z_range = pip_be._z_range
+    num_ch = pip_be.num_channels
+    z_params = ",".join([str(z_range)] * num_ch)
+    await driver.send_command("C5", command=f"PAZ{z_params}")
+    return f"Dropped {tip_type}uL tips into col {col}"
+  elif action == "home":
     pip_be = evo.pip.backend
     z_range = pip_be._z_range
     num_ch = pip_be.num_channels
@@ -903,6 +1735,7 @@ async def do_action(action):
     tips_mask = (1 << num_ch) - 1
     await driver.send_command("C5", command="SDT0,50,200")
     await pip_be.liha.discard_disposable_tip_high(tips_mask)
+    await sync_tip_state()
     return f"Tips ejected (mask={tips_mask:#x})"
   elif action == "ree":
     resp = await driver.send_command("C5", command="REE0")
@@ -967,9 +1800,16 @@ connected = False
 
 def build_deck():
   """Build the deck and EVO device WITHOUT connecting to hardware."""
-  global evo
+  global evo, tip_racks
 
-  from labware_library import DiTi_50ul_SBS_LiHa_Air, Eppendorf_96_wellplate_250ul_Vb_skirted, MP_3Pos_Corrected
+  from labware_library import (
+    DeepWell_96_Round_Corrected,
+    DiTi_50ul_SBS_LiHa_Air,
+    DiTi_200ul_SBS_LiHa_Air,
+    DiTi_1000ul_SBS_LiHa_Air,
+    Eppendorf_96_wellplate_250ul_Vb_skirted,
+    MP_3Pos_Corrected,
+  )
   from pylabrobot.resources.tecan.tecan_decks import EVO150Deck
   from pylabrobot.tecan.evo import TecanEVO
 
@@ -985,18 +1825,35 @@ def build_deck():
     write_timeout=120,
   )
 
-  carrier = MP_3Pos_Corrected("carrier")
-  deck.assign_child_resource(carrier, rails=16)
+  # Rail 4: 50uL tips + Eppendorf plates
+  carrier_r4 = MP_3Pos_Corrected("carrier_r4")
+  deck.assign_child_resource(carrier_r4, rails=4)
+  carrier_r4[0] = Eppendorf_96_wellplate_250ul_Vb_skirted("source_r4")
+  carrier_r4[1] = Eppendorf_96_wellplate_250ul_Vb_skirted("dest_r4")
+  tips_50 = DiTi_50ul_SBS_LiHa_Air("tips_50ul")
+  carrier_r4[2] = tips_50
 
-  carrier2 = MP_3Pos_Corrected("carrier2")
-  deck.assign_child_resource(carrier2, rails=22)
+  # Rail 16: 200uL tips + Eppendorf plates
+  carrier_r16 = MP_3Pos_Corrected("carrier_r16")
+  deck.assign_child_resource(carrier_r16, rails=16)
+  carrier_r16[0] = Eppendorf_96_wellplate_250ul_Vb_skirted("source_r16")
+  carrier_r16[1] = Eppendorf_96_wellplate_250ul_Vb_skirted("dest_r16")
+  tips_200 = DiTi_200ul_SBS_LiHa_Air("tips_200ul")
+  carrier_r16[2] = tips_200
 
-  source_plate = Eppendorf_96_wellplate_250ul_Vb_skirted("source")
-  dest_plate = Eppendorf_96_wellplate_250ul_Vb_skirted("dest")
-  tip_rack = DiTi_50ul_SBS_LiHa_Air("tips")
-  carrier[0] = source_plate
-  carrier[1] = dest_plate
-  carrier[2] = tip_rack
+  # Rail 26: 1000uL tips + deep-well plates
+  carrier_r26 = MP_3Pos_Corrected("carrier_r26")
+  deck.assign_child_resource(carrier_r26, rails=26)
+  carrier_r26[0] = DeepWell_96_Round_Corrected("source_r26")
+  carrier_r26[1] = DeepWell_96_Round_Corrected("dest_r26")
+  tips_1000 = DiTi_1000ul_SBS_LiHa_Air("tips_1000ul")
+  carrier_r26[2] = tips_1000
+
+  tip_racks = {
+    "50": tips_50,
+    "200": tips_200,
+    "1000": tips_1000,
+  }
 
   print("Deck built (not connected).")
 
