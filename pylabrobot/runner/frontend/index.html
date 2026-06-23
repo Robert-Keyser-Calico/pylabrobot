@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PyLabRobot Runner</title>
+  <script src="https://unpkg.com/konva@9/konva.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; font-family: 'Segoe UI', Tahoma, sans-serif; background: #1a1a2e; color: #eee; }
+
+    /* Header */
+    .header {
+      height: 40px; background: #16213e; display: flex; align-items: center;
+      padding: 0 16px; border-bottom: 2px solid #0f3460; gap: 12px;
+    }
+    .header h1 { font-size: 15px; color: #e94560; white-space: nowrap; }
+    .status-area { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #555; }
+    .status-dot.connected { background: #4ec9b0; }
+    .status-dot.disconnected { background: #e94560; }
+    .status-text { font-size: 12px; color: #888; }
+    .status-text.connected { color: #4ec9b0; }
+    .status-text.disconnected { color: #e94560; }
+
+    /* Shared button styles */
+    .btn {
+      padding: 3px 10px; border: 1px solid #444; background: #16213e; color: #eee;
+      border-radius: 4px; cursor: pointer; font-size: 11px;
+    }
+    .btn:hover { background: #0f3460; }
+    .btn.primary { background: #0f3460; border-color: #e94560; }
+    .btn.primary:hover { background: #e94560; }
+    .btn.danger { border-color: #e94560; }
+    .btn.danger:hover { background: #e94560; }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+
+    /* Main 3-column layout: deck | editor+console | chat */
+    .main { display: flex; height: calc(100vh - 40px); }
+
+    /* Deck panel (left) */
+    .deck-panel {
+      flex: 1; min-width: 250px; display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    #kanvas { flex: 1; width: 100%; background: #f8f8f8; }
+
+    /* Channel state panel */
+    .channel-panel {
+      height: 110px; border-top: 1px solid #333; background: #1a1a2e;
+      display: flex; flex-direction: column; flex-shrink: 0;
+    }
+    .panel-label {
+      padding: 3px 10px; font-size: 10px; color: #e94560;
+      text-transform: uppercase; letter-spacing: 1px;
+      background: #16213e; border-bottom: 1px solid #333;
+    }
+    #channel-state {
+      flex: 1; display: flex; align-items: stretch; gap: 2px;
+      padding: 6px 10px; overflow-x: auto;
+    }
+    .channel-col {
+      display: flex; flex-direction: column; align-items: center;
+      min-width: 42px; flex: 1;
+    }
+    .channel-label { font-size: 9px; color: #888; margin-bottom: 2px; }
+    .channel-tube {
+      width: 18px; flex: 1; background: #252540; border-radius: 3px 3px 0 0;
+      position: relative; overflow: hidden; border: 1px solid #444;
+    }
+    .channel-fill {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      transition: height 0.3s ease;
+    }
+    .channel-tip {
+      width: 0; height: 0;
+      border-left: 9px solid transparent;
+      border-right: 9px solid transparent;
+      border-bottom: 8px solid #444;
+      transform: rotate(180deg);
+    }
+    .channel-vol { font-size: 9px; color: #aaa; margin-top: 1px; white-space: nowrap; }
+    .channel-max { font-size: 8px; color: #555; white-space: nowrap; }
+
+    /* Arm state panel */
+    .arm-panel {
+      height: 32px; border-top: 1px solid #333; background: #1a1a2e;
+      display: flex; align-items: center; flex-shrink: 0;
+    }
+    #arm-state {
+      display: flex; align-items: center; gap: 8px; padding: 0 10px;
+      flex: 1; overflow-x: auto;
+    }
+    .arm-row { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+    .arm-name { color: #e94560; font-weight: bold; font-size: 10px; text-transform: uppercase; }
+    .arm-coord { color: #888; font-size: 11px; }
+    .arm-coord b { color: #ccc; margin-left: 2px; }
+    .arm-holding { color: #4ec9b0; font-size: 10px; }
+    .arm-gripper { color: #e9c46a; font-size: 10px; padding: 1px 5px; border: 1px solid #e9c46a; border-radius: 3px; }
+    .arm-empty { color: #555; font-size: 11px; font-style: italic; }
+
+    /* Resize handles */
+    .resize-handle { width: 4px; cursor: col-resize; background: #333; flex-shrink: 0; }
+    .resize-handle:hover { background: #e94560; }
+
+    /* Editor panel (center) */
+    .editor-panel {
+      width: 500px; min-width: 300px; display: flex; flex-direction: column;
+      background: #1e1e2e; border-left: 1px solid #333; border-right: 1px solid #333;
+    }
+
+    /* Protocol bar: New, Save, protocol tabs */
+    .protocol-bar {
+      display: flex; align-items: center; gap: 4px; padding: 4px 8px;
+      background: #16213e; border-bottom: 1px solid #333;
+      overflow-x: auto; white-space: nowrap;
+    }
+    .protocol-item {
+      padding: 3px 10px; border: 1px solid #333; background: #1e1e2e; color: #aaa;
+      border-radius: 3px; cursor: pointer; font-size: 11px;
+    }
+    .protocol-item:hover { background: #0f3460; color: #eee; }
+
+    #protocol-name {
+      font-size: 12px; color: #aaa; font-family: monospace;
+      padding: 0 8px; white-space: nowrap; overflow: hidden;
+    }
+
+    /* Monaco editor */
+    #editor-container { flex: 1; min-height: 200px; }
+
+    /* Run/Stop bar below editor */
+    .run-bar {
+      display: flex; align-items: center; gap: 6px; padding: 5px 8px;
+      background: #16213e; border-top: 1px solid #333; border-bottom: 1px solid #333;
+    }
+
+    /* Console */
+    .console-area {
+      height: 180px; min-height: 80px;
+      display: flex; flex-direction: column;
+    }
+    .console-header {
+      padding: 4px 12px; background: #16213e; font-size: 10px;
+      color: #e94560; text-transform: uppercase; letter-spacing: 1px;
+      border-bottom: 1px solid #333;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    #console-output {
+      flex: 1; overflow-y: auto; padding: 6px 10px;
+      font-family: 'Courier New', monospace; font-size: 11px;
+      background: #0a0a1a;
+    }
+    .console-line { margin-bottom: 1px; white-space: pre-wrap; }
+    .console-line.stdout { color: #ccc; }
+    .console-line.stderr { color: #e94560; }
+    .console-line.info { color: #4ec9b0; }
+
+    /* Chat panel (right, always visible) */
+    .chat-panel {
+      width: 350px; min-width: 200px; display: flex; flex-direction: column;
+      background: #1e1e2e;
+    }
+    .chat-header {
+      padding: 6px 12px; background: #16213e; border-bottom: 1px solid #333;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .chat-header span { font-size: 12px; color: #e94560; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; }
+    #chat-messages {
+      flex: 1; overflow-y: auto; padding: 10px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .chat-msg {
+      padding: 8px 12px; border-radius: 6px; font-size: 13px;
+      max-width: 95%; word-wrap: break-word;
+    }
+    .chat-msg.user {
+      background: #0f3460; color: #eee; align-self: flex-end;
+    }
+    .chat-msg.assistant {
+      background: #252540; color: #ccc; align-self: flex-start;
+    }
+    .chat-code {
+      font-family: 'Courier New', monospace; font-size: 11px;
+      background: #0a0a1a; padding: 8px; border-radius: 4px;
+      white-space: pre-wrap; word-break: break-word; margin: 4px 0;
+      max-height: 250px; overflow-y: auto;
+    }
+    .chat-actions {
+      display: flex; gap: 6px; margin-top: 6px;
+    }
+    .chat-actions button {
+      padding: 3px 10px; border: 1px solid #4ec9b0; background: transparent;
+      color: #4ec9b0; border-radius: 3px; cursor: pointer; font-size: 11px;
+    }
+    .chat-actions button:hover { background: #4ec9b0; color: #1a1a2e; }
+    .chat-input-area {
+      display: flex; gap: 6px; padding: 8px; border-top: 1px solid #333;
+    }
+    #chat-input {
+      flex: 1; padding: 8px; background: #0a0a1a; border: 1px solid #444;
+      color: #eee; border-radius: 4px; font-size: 13px; resize: none;
+    }
+    #chat-input:focus { outline: none; border-color: #e94560; }
+    .chat-input-area button {
+      padding: 8px 14px; background: #e94560; border: none; color: #eee;
+      border-radius: 4px; cursor: pointer; font-size: 13px;
+    }
+    .chat-input-area button:hover { background: #c73650; }
+
+    /* Hide visualizer UI elements */
+    #resource-tree, #coords-panel, .side-panel { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>PyLabRobot Runner</h1>
+    <span id="protocol-name">untitled</span>
+    <div class="status-area" style="gap: 12px;">
+      <span style="font-size:11px;color:#666">Device:</span>
+      <span class="status-text" id="device-status" style="cursor:pointer" onclick="toggleDeviceConnect()">disconnected</span>
+      <span style="font-size:11px;color:#444">|</span>
+      <div class="status-dot" id="status-indicator"></div>
+      <span class="status-text" id="status-label">Connecting...</span>
+    </div>
+  </div>
+
+  <div class="main">
+    <!-- Deck visualization + state panels -->
+    <div class="deck-panel">
+      <div id="kanvas"></div>
+      <div class="channel-panel">
+        <div class="panel-label">Channels</div>
+        <div id="channel-state"></div>
+      </div>
+      <div class="arm-panel">
+        <div class="panel-label" style="border-bottom:none;padding:0 10px">Arm</div>
+        <div id="arm-state"><span class="arm-empty">—</span></div>
+      </div>
+    </div>
+
+    <div class="resize-handle" id="resize-handle-left"></div>
+
+    <!-- Editor + Console -->
+    <div class="editor-panel">
+      <!-- Protocol bar: New, Save, tabs -->
+      <div class="protocol-bar">
+        <button class="btn" onclick="newProtocol()">New</button>
+        <button class="btn" onclick="saveCurrentProtocol()">Save</button>
+        <span style="width:1px;height:18px;background:#444;margin:0 4px"></span>
+        <button class="protocol-item" onclick="newProtocol()" style="color:#e94560;border-color:#e94560">+</button>
+        <div id="protocol-list" style="display:contents"></div>
+      </div>
+
+      <!-- Monaco editor -->
+      <div id="editor-container"></div>
+
+      <!-- Run/Stop bar -->
+      <div class="run-bar">
+        <button class="btn primary" id="btn-run" onclick="runProtocol()" disabled>Run</button>
+        <button class="btn danger" id="btn-stop" onclick="stopProtocol()" disabled>Stop</button>
+      </div>
+
+      <!-- Console -->
+      <div class="console-area">
+        <div class="console-header">
+          <span>Console</span>
+          <button class="btn" onclick="clearConsole()" style="padding:1px 6px">Clear</button>
+        </div>
+        <div id="console-output"></div>
+      </div>
+    </div>
+
+    <div class="resize-handle" id="resize-handle-right"></div>
+
+    <!-- AI Assistant chat (always visible) -->
+    <div class="chat-panel" id="chat-panel">
+      <div class="chat-header">
+        <span>AI Assistant</span>
+        <button class="btn" onclick="clearChat()" style="padding:1px 6px">Clear</button>
+      </div>
+      <div id="chat-messages"></div>
+      <div class="chat-input-area">
+        <textarea id="chat-input" rows="2" placeholder="Describe your protocol..."></textarea>
+        <button onclick="sendChat()">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden elements expected by lib.js -->
+  <div id="resource-tree" style="display:none"></div>
+  <input id="coords-wrt-ref" type="hidden" value="">
+  <span id="coords-x-ref" style="display:none"></span>
+  <span id="coords-y-ref" style="display:none"></span>
+  <span id="coords-z-ref" style="display:none"></span>
+  <span id="coords-wrt-x-ref" style="display:none"></span>
+  <span id="coords-wrt-y-ref" style="display:none"></span>
+  <span id="coords-wrt-z-ref" style="display:none"></span>
+  <input id="delta-lines-toggle" type="hidden" value="">
+
+  <script>
+    // Stub functions expected by lib.js
+    function buildResourceTree() {}
+    function addResourceToTree() {}
+    function removeResourceFromTree() {}
+    function updateSidepanelState() {}
+    function openAllMachineToolPanels() {}
+
+    function clearConsole() { document.getElementById("console-output").innerHTML = ""; }
+
+    async function toggleDeviceConnect() {
+      const el = document.getElementById("device-status");
+      try {
+        const statusResp = await fetch("/api/device/status");
+        const status = await statusResp.json();
+        if (status.state === "connected") {
+          el.textContent = "disconnecting...";
+          await fetch("/api/device/disconnect", { method: "POST" });
+          el.textContent = "disconnected";
+          el.style.color = "#888";
+        } else {
+          const mode = prompt("Connect mode:", "simulation");
+          if (!mode) return;
+          el.textContent = "connecting...";
+          el.style.color = "#e9c46a";
+          const resp = await fetch("/api/device/connect", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode: mode }),
+          });
+          const data = await resp.json();
+          if (resp.ok) {
+            el.textContent = data.mode + " connected";
+            el.style.color = "#4ec9b0";
+          } else {
+            el.textContent = "error";
+            el.style.color = "#e94560";
+            appendConsole("Connect failed: " + (data.detail || "unknown error"), "stderr");
+          }
+        }
+      } catch (e) {
+        el.textContent = "error";
+        el.style.color = "#e94560";
+        appendConsole("Device error: " + e, "stderr");
+      }
+    }
+
+    async function runProtocol() {
+      if (!editor) return;
+      const code = editor.getValue();
+      document.getElementById("btn-run").disabled = true;
+      document.getElementById("btn-stop").disabled = false;
+      try {
+        const resp = await fetch("/api/run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: code }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) appendConsole(data.detail || "Run failed", "stderr");
+      } catch (e) {
+        appendConsole("Run request failed: " + e, "stderr");
+      }
+      pollExecutionStatus();
+    }
+
+    function stopProtocol() {
+      fetch("/api/run/stop", { method: "POST" });
+    }
+
+    function pollExecutionStatus() {
+      const poll = setInterval(async () => {
+        try {
+          const resp = await fetch("/api/run/status");
+          const data = await resp.json();
+          if (data.state !== "running") {
+            clearInterval(poll);
+            document.getElementById("btn-run").disabled = false;
+            document.getElementById("btn-stop").disabled = true;
+            if (typeof fetchChannelState === 'function') fetchChannelState();
+            if (typeof fetchArmState === 'function') fetchArmState();
+          }
+        } catch (e) {
+          clearInterval(poll);
+        }
+      }, 500);
+    }
+
+    // Resize handles for both panel dividers
+    function setupResize(handleId, getTarget, getWidth) {
+      const handle = document.getElementById(handleId);
+      let active = false;
+      handle.addEventListener('mousedown', () => {
+        active = true;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+      });
+      document.addEventListener('mousemove', (e) => {
+        if (!active) return;
+        const target = getTarget();
+        const w = getWidth(e);
+        target.style.width = Math.max(200, Math.min(900, w)) + 'px';
+      });
+      document.addEventListener('mouseup', () => {
+        if (active) {
+          active = false;
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+        }
+      });
+    }
+
+    // Left handle resizes editor panel (measured from right edge of deck)
+    setupResize('resize-handle-left',
+      () => document.querySelector('.editor-panel'),
+      (e) => {
+        const chat = document.querySelector('.chat-panel');
+        return document.body.clientWidth - e.clientX - chat.offsetWidth - 8;
+      }
+    );
+
+    // Right handle resizes chat panel (measured from right edge)
+    setupResize('resize-handle-right',
+      () => document.querySelector('.chat-panel'),
+      (e) => document.body.clientWidth - e.clientX
+    );
+  </script>
+
+  <!-- Konva rendering layer from pylabrobot visualizer -->
+  <script src="/static/lib.js"></script>
+  <script>mode = MODE_VISUALIZER;</script>
+  <!-- Monaco Editor loader -->
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.50.0/min/vs/loader.js"></script>
+  <!-- Runner modules -->
+  <script src="/static/channels.js"></script>
+  <script src="/static/arms.js"></script>
+  <script src="/static/editor.js"></script>
+  <script src="/static/chat.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

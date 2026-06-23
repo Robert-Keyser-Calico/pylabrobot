@@ -1,0 +1,50 @@
+{
+  "tips": {
+    "z_start": 770
+  },
+  "dest": {
+    "z_dispense": 99
+  },
+  "source_r26": {
+    "z_start": 550,
+    "z_dispense": 400,
+    "z_max": 150
+  },
+  "source_r4": {
+    "z_start": 300,
+    "z_dispense": 164,
+    "z_max": 150
+  },
+  "dest_r4": {
+    "z_start": 300,
+    "z_dispense": 164,
+    "z_max": 145
+  },
+  "tips_50ul": {
+    "z_start": 770,
+    "z_max": 550
+  },
+  "source_r16": {
+    "z_start": 300,
+    "z_dispense": 164,
+    "z_max": 145
+  },
+  "dest_r16": {
+    "z_start": 300,
+    "z_dispense": 164,
+    "z_max": 145
+  },
+  "tips_200ul": {
+    "z_start": 770,
+    "z_max": 551
+  },
+  "dest_r26": {
+    "z_start": 557,
+    "z_dispense": 400,
+    "z_max": 150
+  },
+  "tips_1000ul": {
+    "z_start": 1180,
+    "z_max": 960
+  }
+}
