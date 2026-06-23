@@ -47,7 +47,7 @@ async def main():
   print("\n--- Step 1: USB Connection ---")
   t1 = time.time()
   try:
-    await evo._driver.setup()
+    await evo.driver.setup()
     print(f"  USB connected ({time.time() - t1:.1f}s)")
   except Exception as e:
     print(f"  FAILED: {e}")
@@ -57,7 +57,7 @@ async def main():
   print("\n--- Step 2: Pre-init check ---")
   t2 = time.time()
   try:
-    resp = await evo._driver.send_command("C5", command="REE0")
+    resp = await evo.driver.send_command("C5", command="REE0")
     err = resp["data"][0] if resp and resp.get("data") else ""
     print(f"  LiHa REE0: {err} ({time.time() - t2:.1f}s)")
     if err and not any(c in ("A", "G") for c in err):
@@ -68,7 +68,7 @@ async def main():
     print(f"  REE0 check failed: {e} ({time.time() - t2:.1f}s)")
 
   try:
-    resp = await evo._driver.send_command("C1", command="REE")
+    resp = await evo.driver.send_command("C1", command="REE")
     roma_err = resp["data"][0] if resp and resp.get("data") else ""
     print(f"  RoMa REE: {roma_err}")
   except Exception as e:
@@ -96,7 +96,7 @@ async def main():
   try:
     print(f"\nChannels: {evo.pip.num_channels}")
 
-    resp = await evo._driver.send_command("C5", command="REE0")
+    resp = await evo.driver.send_command("C5", command="REE0")
     err = resp["data"][0] if resp and resp.get("data") else ""
     print(f"REE0: {err}")
     all_ok = err and all(c == "@" for c in err)
@@ -104,7 +104,7 @@ async def main():
     # ZaapMotion check
     print("\nZaapMotion firmware:")
     for tip in range(8):
-      resp = await evo._driver.send_command("C5", command=f"T2{tip}RFV0")
+      resp = await evo.driver.send_command("C5", command=f"T2{tip}RFV0")
       fw = resp["data"][0] if resp and resp.get("data") else "?"
       print(f"  Tip {tip + 1}: {fw}")
 
@@ -113,7 +113,7 @@ async def main():
     else:
       print("\n*** INIT TEST FAILED ***")
       error_names = {0: "OK", 1: "Init failed", 7: "Not initialized"}
-      resp2 = await evo._driver.send_command("C5", command="REE1")
+      resp2 = await evo.driver.send_command("C5", command="REE1")
       cfg = resp2["data"][0] if resp2 and resp2.get("data") else ""
       for i, (axis, code_char) in enumerate(zip(cfg, err)):
         code = ord(code_char) - 0x40
@@ -123,7 +123,7 @@ async def main():
 
   finally:
     print("\nStopping...")
-    await evo._driver.stop()
+    await evo.driver.stop()
     print("Done.")
 
 

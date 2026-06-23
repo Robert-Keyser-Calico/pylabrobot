@@ -82,3 +82,31 @@ class TecanGripperArm(GripperArm):
 
     # Use base class resource tracking
     self._finalize_drop(resource, destination, 0)
+
+  async def move_resource(
+    self,
+    resource: Resource,
+    to: Union[ResourceStack, ResourceHolder, Resource, Coordinate],
+    pickup_distance_from_top: Optional[float] = None,
+    offset: Coordinate = Coordinate.zero(),
+    backend_params: Optional[BackendParams] = None,
+  ):
+    """Pick up and drop resource in one operation.
+
+    Args:
+      resource: Resource to move
+      to: Destination (ResourceHolder, Coordinate, etc.)
+      pickup_distance_from_top: Distance from top when picking up
+      offset: Offset for drop location
+      backend_params: Optional backend parameters
+    """
+    await self.pick_up_resource(
+      resource=resource,
+      pickup_distance_from_top=pickup_distance_from_top,
+      backend_params=backend_params,
+    )
+    await self.drop_resource(
+      destination=to,
+      offset=offset,
+      backend_params=backend_params,
+    )

@@ -10,8 +10,11 @@ import logging
 from typing import Dict, Optional, Tuple
 
 from pylabrobot.capabilities.arms.backend import GripperArmBackend
-from pylabrobot.capabilities.arms.standard import GripperLocation
+from pylabrobot.capabilities.arms.standard import CartesianPose
 from pylabrobot.capabilities.capability import BackendParams
+
+# Alias for backwards compatibility with protocol-runner code
+GripperLocation = CartesianPose
 from pylabrobot.resources import Coordinate, Resource, TecanPlateCarrier
 from pylabrobot.resources.rotation import Rotation
 
@@ -302,3 +305,39 @@ class EVORoMaBackend(GripperArmBackend):
       location=Coordinate(x=x / 10.0, y=y / 10.0, z=z / 10.0),
       rotation=Rotation(x=0, y=0, z=r / 10.0),
     )
+
+  # ============== Abstract methods required by v1b1 GripperArmBackend ==============
+
+  @property
+  def min_gripper_width(self) -> Optional[float]:
+    """Minimum gripper width in mm (RoMa can close to ~0mm)."""
+    return 0.0
+
+  @property
+  def max_gripper_width(self) -> Optional[float]:
+    """Maximum gripper width in mm (RoMa max ~130mm for plates)."""
+    return 130.0
+
+  async def move_gripper(
+    self,
+    width: float,
+    force_sensing: bool = False,
+    backend_params: Optional[BackendParams] = None,
+  ) -> None:
+    """Move gripper to specified width.
+
+    Args:
+      width: Target width in mm
+      force_sensing: If True, use grip with force sensing. If False, use position control.
+    """
+    if force_sensing:
+      await self.close_gripper(width, backend_params)
+    else:
+      await self.open_gripper(width, backend_params)
+
+  async def request_gripper_pose(
+    self, backend_params: Optional[BackendParams] = None
+  ) -> CartesianPose:
+    """Get current gripper pose (v1b1 uses CartesianPose instead of GripperLocation)."""
+    location = await self.get_gripper_location(backend_params)
+    return location  # GripperLocation is aliased to CartesianPose
