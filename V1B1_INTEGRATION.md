@@ -103,7 +103,7 @@ python -m pylabrobot.runner
 
 ### ✅ 3. Hardware Testing Infrastructure
 
-**Location**: `keyser-testing/` (31 files)
+**Location**: `calico-testing/` (31 files)
 
 **Purpose**: Comprehensive hardware validation suite for Tecan EVO
 
@@ -136,13 +136,13 @@ python -m pylabrobot.runner
 **Usage** (with hardware connected):
 ```bash
 # 1. Test connection (MINIMAL - just USB + init)
-python keyser-testing/test_v1b1_init.py
+python calico-testing/test_v1b1_init.py
 
 # 2. Test pipetting (requires tips + liquid)
-python keyser-testing/test_v1b1_pipette.py
+python calico-testing/test_v1b1_pipette.py
 
 # 3. Jog to teach positions
-python keyser-testing/jog_ui.py
+python calico-testing/jog_ui.py
 ```
 
 ---
@@ -166,7 +166,7 @@ python keyser-testing/jog_ui.py
 - Updated all Tecan EVO imports:
   - `from pylabrobot.arms.arm import GripperArm` 
   - → `from pylabrobot.capabilities.arms.arm import GripperArm`
-- Modified files: `roma_backend.py`, `arm.py`, test files in `keyser-testing/`
+- Modified files: `roma_backend.py`, `arm.py`, test files in `calico-testing/`
 
 ### Decision 2: Tecan Platform Coexistence
 
@@ -265,9 +265,9 @@ By rebasing onto the latest v1b1 commit from upstream, we now have access to:
 
 ### ⏳ Pending (Requires Hardware)
 - [ ] **Tecan EVO hardware validation**
-  - Run `python keyser-testing/test_v1b1_init.py` (connection test)
-  - Run `python keyser-testing/test_v1b1_pipette.py` (pipetting test)
-  - Full hardware checklist in `keyser-testing/hardware_testing_checklist.md`
+  - Run `python calico-testing/test_v1b1_init.py` (connection test)
+  - Run `python calico-testing/test_v1b1_pipette.py` (pipetting test)
+  - Full hardware checklist in `calico-testing/hardware_testing_checklist.md`
 
 - [ ] **Protocol Runner validation**
   - Start server: `python -m pylabrobot.runner`
@@ -295,7 +295,7 @@ Git reported LF → CRLF warnings for ported files. This is expected on Windows 
 The system doesn't have `python` in PATH. Use full path or install Python if needed for testing.
 
 ### Deck Layout Dependency
-Hardware tests (`keyser-testing/*.py`) use a specific deck layout from protocol-runner. If your deck configuration differs, you may need to:
+Hardware tests (`calico-testing/*.py`) use a specific deck layout from protocol-runner. If your deck configuration differs, you may need to:
 1. Update deck layout in test scripts
 2. Or use `test_v1b1_init.py` (minimal - only tests connection/init)
 3. Or update `taught_positions.json` with your actual labware positions
@@ -329,7 +329,7 @@ pytest pylabrobot/tecan/evo/tests/ -v
 python -m pylabrobot.runner  # Test web UI
 
 # Validate with hardware (if available)
-python keyser-testing/test_v1b1_init.py
+python calico-testing/test_v1b1_init.py
 
 # Push
 git push origin protocol-runner-v1b1
@@ -363,7 +363,7 @@ git push origin protocol-runner-v1b1
 - 70 files total
 - `pylabrobot/runner/`: 19 files (~8,000 LOC)
 - `pylabrobot/tecan/evo/`: 18 files (~3,500 LOC)
-- `keyser-testing/`: 31 files (~2,000 LOC)
+- `calico-testing/`: 31 files (~2,000 LOC)
 - `pyproject.toml`: +7 lines (runner dependencies)
 - `V1B1_INTEGRATION.md`: This document
 
@@ -412,9 +412,9 @@ pip install -e .[dev,runner,usb]  # Includes pytest, mypy, ruff
 ## Contact / Questions
 
 For issues specific to this integration:
-- Check `keyser-testing/README.md` for Tecan EVO setup
+- Check `calico-testing/README.md` for Tecan EVO setup
 - Check `pylabrobot/runner/__main__.py` for Protocol Runner startup
-- Review `hardware_testing_checklist.md` for validation steps
+- Review `calico-testing/hardware_testing_checklist.md` for validation steps
 
 For upstream PyLabRobot questions:
 - https://github.com/pylabrobot/pylabrobot
