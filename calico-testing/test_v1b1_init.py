@@ -51,6 +51,8 @@ async def main():
     print(f"  USB connected ({time.time() - t1:.1f}s)")
   except Exception as e:
     print(f"  FAILED: {e}")
+    import traceback
+    traceback.print_exc()
     return
 
   # --- Check init status before running capabilities ---
