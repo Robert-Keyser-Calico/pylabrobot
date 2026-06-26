@@ -359,9 +359,7 @@ HTML = """
       <h2 style="font-size:14px;color:#60a5fa;margin-bottom:8px;">TIP MANAGEMENT</h2>
       <div class="controls" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <select id="tip-type" style="background:#1e293b;color:#e2e8f0;border:1px solid #334155;padding:4px 8px;border-radius:4px;">
-          <option value="50">50uL (rail 4)</option>
-          <option value="200">200uL (rail 16)</option>
-          <option value="1000">1000uL (rail 26)</option>
+          <option value="50">50uL (rail 18)</option>
         </select>
         <label style="font-size:12px;color:#64748b;">Col:</label>
         <input type="number" id="tip-col" value="1" min="1" max="12" style="width:50px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;padding:4px;border-radius:4px;">
@@ -1673,10 +1671,10 @@ async def sync_tip_state():
 
 async def do_action(action, data=None):
   if action == "pick_up_tips":
-    tip_type = data.get("tip_type", "200")
+    tip_type = data.get("tip_type", "50")
     col = data.get("column", 1)
     if tip_type not in tip_racks:
-      return f"Unknown tip type: {tip_type}. Choose 50, 200, or 1000."
+      return f"Unknown tip type: {tip_type}. Available: {', '.join(tip_racks)}."
     await sync_tip_state()
     rack = tip_racks[tip_type]
     wells = [f"{row}{col}" for row in ROWS]
@@ -1690,10 +1688,10 @@ async def do_action(action, data=None):
     status = resp["data"][0] if resp and resp.get("data") else "?"
     return f"Picked up {tip_type}uL tips from col {col} (RTS={status})"
   elif action == "drop_tips":
-    tip_type = data.get("tip_type", "200")
+    tip_type = data.get("tip_type", "50")
     col = data.get("column", 1)
     if tip_type not in tip_racks:
-      return f"Unknown tip type: {tip_type}. Choose 50, 200, or 1000."
+      return f"Unknown tip type: {tip_type}. Available: {', '.join(tip_racks)}."
     await sync_tip_state()
     rack = tip_racks[tip_type]
     wells = [f"{row}{col}" for row in ROWS]
@@ -1803,6 +1801,7 @@ def build_deck():
   global evo, tip_racks
 
   from labware_library import (
+    AlpaquaMagnet,
     DeepWell_96_Round_Corrected,
     DiTi_50ul_SBS_LiHa_Air,
     DiTi_200ul_SBS_LiHa_Air,
@@ -1825,34 +1824,52 @@ def build_deck():
     write_timeout=120,
   )
 
-  # Rail 4: 50uL tips + Eppendorf plates
-  carrier_r4 = MP_3Pos_Corrected("carrier_r4")
-  deck.assign_child_resource(carrier_r4, rails=4)
-  carrier_r4[0] = Eppendorf_96_wellplate_250ul_Vb_skirted("source_r4")
-  carrier_r4[1] = Eppendorf_96_wellplate_250ul_Vb_skirted("dest_r4")
+  # Layout (2026-06, see deck photo):
+  #   rails 1-2   system-liquid / wash block (fixed deck fixture, not modeled)
+  #   rail  4     Inheco shaker        (placeholder MP_3Pos, teach Z from hardware)
+  #   rail  10    Inheco heater/cooler (placeholder MP_3Pos; PCR plates front two)
+  #   rail  18    carrier 1: [empty, Magnum FLX deepwell, 50uL Tecan tips]
+  #   rail  24    carrier 2: empty
+  #   rail  32    carrier 3: empty
+  #   rail  38    carrier 4 (not raised): empty
+  #
+  # NOTE: Inheco modules and the Magnum FLX deepwell have no real definitions.
+  # They use MP_3Pos / DeepWell_96_Round geometry as placeholders -- teach the
+  # actual Z positions from hardware via the jog UI before relying on them.
+
+  # Rail 4: Inheco shaker (placeholder)
+  inheco_shaker = MP_3Pos_Corrected("inheco_shaker")
+  deck.assign_child_resource(inheco_shaker, rails=4)
+
+  # Rail 10: Inheco heater/cooler (placeholder) with PCR plates on front two sites
+  inheco_heatcool = MP_3Pos_Corrected("inheco_heatcool")
+  deck.assign_child_resource(inheco_heatcool, rails=10)
+  inheco_heatcool[0] = Eppendorf_96_wellplate_250ul_Vb_skirted("pcr_front")
+  inheco_heatcool[1] = Eppendorf_96_wellplate_250ul_Vb_skirted("pcr_back")
+
+  # Rail 18: carrier 1 -- Alpaqua magnet (site 2, empty) + 50uL tips (site 3).
+  # The magnet is an empty ResourceHolder; a plate transferred onto it by RoMa
+  # gets re-parented and lifted automatically (teach child_location.z first).
+  carrier_r18 = MP_3Pos_Corrected("carrier_r18")
+  deck.assign_child_resource(carrier_r18, rails=18)
+  carrier_r18[1] = AlpaquaMagnet("magflx_magnet")
   tips_50 = DiTi_50ul_SBS_LiHa_Air("tips_50ul")
-  carrier_r4[2] = tips_50
+  carrier_r18[2] = tips_50
 
-  # Rail 16: 200uL tips + Eppendorf plates
-  carrier_r16 = MP_3Pos_Corrected("carrier_r16")
-  deck.assign_child_resource(carrier_r16, rails=16)
-  carrier_r16[0] = Eppendorf_96_wellplate_250ul_Vb_skirted("source_r16")
-  carrier_r16[1] = Eppendorf_96_wellplate_250ul_Vb_skirted("dest_r16")
-  tips_200 = DiTi_200ul_SBS_LiHa_Air("tips_200ul")
-  carrier_r16[2] = tips_200
+  # Rail 24: carrier 2 -- empty
+  carrier_r24 = MP_3Pos_Corrected("carrier_r24")
+  deck.assign_child_resource(carrier_r24, rails=24)
 
-  # Rail 26: 1000uL tips + deep-well plates
-  carrier_r26 = MP_3Pos_Corrected("carrier_r26")
-  deck.assign_child_resource(carrier_r26, rails=26)
-  carrier_r26[0] = DeepWell_96_Round_Corrected("source_r26")
-  carrier_r26[1] = DeepWell_96_Round_Corrected("dest_r26")
-  tips_1000 = DiTi_1000ul_SBS_LiHa_Air("tips_1000ul")
-  carrier_r26[2] = tips_1000
+  # Rail 32: carrier 3 -- empty
+  carrier_r32 = MP_3Pos_Corrected("carrier_r32")
+  deck.assign_child_resource(carrier_r32, rails=32)
+
+  # Rail 38: carrier 4 (not raised) -- empty
+  carrier_r38 = MP_3Pos_Corrected("carrier_r38")
+  deck.assign_child_resource(carrier_r38, rails=38)
 
   tip_racks = {
     "50": tips_50,
-    "200": tips_200,
-    "1000": tips_1000,
   }
 
   print("Deck built (not connected).")

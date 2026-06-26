@@ -12,6 +12,7 @@ from typing import Optional
 
 from pylabrobot.resources import Coordinate, CrossSectionType, Well
 from pylabrobot.resources.carrier import PlateHolder, create_homogeneous_resources
+from pylabrobot.resources.resource_holder import ResourceHolder
 from pylabrobot.resources.tecan.plate_carriers import TecanPlateCarrier
 from pylabrobot.resources.tecan.plates import TecanPlate
 from pylabrobot.resources.tecan.tip_creators import TecanTip, TipType
@@ -62,6 +63,39 @@ def MP_3Pos_Corrected(name: str) -> TecanPlateCarrier:
       pedestal_size_z=0,
     ),
     model="MP_3Pos",
+  )
+
+
+# ============== Magnets ==============
+
+
+def AlpaquaMagnet(name: str) -> ResourceHolder:
+  """Alpaqua Magnum FLX 96-ring magnet, modeled as an empty ResourceHolder.
+
+  Defined WITHOUT a plate. When a (already-defined) plate is transferred onto
+  it via the RoMa arm, PyLabRobot re-parents the plate to this holder and
+  recomputes the plate's coordinates as:
+
+      magnet deck location + child_location (incl. the Z lift below).
+
+  So the plate's wells automatically shift up by the magnet height -- no need
+  to redefine the plate. See ResourceHolder.get_default_child_location.
+
+  PLACEHOLDER geometry -- measure/teach the real values from hardware:
+    - size_z: physical height of the magnet block.
+    - child_location.z: how high the magnet raises the seated plate's origin
+      (bottom) above the carrier site surface. Teach this before relying on
+      liquid-handling Z into a plate sitting on the magnet.
+
+  SBS footprint assumed (127.76 x 85.48 mm).
+  """
+  return ResourceHolder(
+    name=name,
+    size_x=127.76,
+    size_y=85.48,
+    size_z=30.0,  # TODO: measure magnet height
+    model="AlpaquaMagnet_MagnumFLX",
+    child_location=Coordinate(0.0, 0.0, 30.0),  # TODO: teach plate Z lift
   )
 
 

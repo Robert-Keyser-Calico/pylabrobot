@@ -21,8 +21,8 @@
     "z_max": 145
   },
   "tips_50ul": {
-    "z_start": 770,
-    "z_max": 550
+    "z_start": 760,
+    "z_max": 720
   },
   "source_r16": {
     "z_start": 300,
@@ -46,5 +46,15 @@
   "tips_1000ul": {
     "z_start": 1180,
     "z_max": 960
+  },
+  "pcr_back": {
+    "z_start": 560,
+    "z_dispense": 440,
+    "z_max": 415
+  },
+  "pcr_front": {
+    "z_start": 560,
+    "z_dispense": 440,
+    "z_max": 415
   }
 }
