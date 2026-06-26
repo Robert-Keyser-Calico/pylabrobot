@@ -116,7 +116,7 @@ class AirEVOPIPBackend(EVOPIPBackend):
       par = getattr(par, "parent", None)
     return x, y
 
-  async def _on_setup(self) -> None:
+  async def _on_setup(self, backend_params: Optional[BackendParams] = None) -> None:
     """Configure ZaapMotion controllers, then run standard LiHa init."""
 
     # Check if already initialized (skip ZaapMotion config + PIA)

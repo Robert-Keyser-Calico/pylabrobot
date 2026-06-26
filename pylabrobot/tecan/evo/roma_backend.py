@@ -73,7 +73,7 @@ class EVORoMaBackend(GripperArmBackend):
           defaults[key] = val
     return defaults
 
-  async def _on_setup(self) -> None:
+  async def _on_setup(self, backend_params: Optional[BackendParams] = None) -> None:
     """Initialize RoMa arm. Skips PIA if already initialized."""
 
     arm = EVOArm(self._driver, ROMA)  # type: ignore[arg-type]

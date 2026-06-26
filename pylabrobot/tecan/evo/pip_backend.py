@@ -82,7 +82,7 @@ class EVOPIPBackend(PIPBackend):
       raise RuntimeError("Not yet set up. Call setup() first.")
     return self._num_channels
 
-  async def _on_setup(self) -> None:
+  async def _on_setup(self, backend_params: Optional[BackendParams] = None) -> None:
     """Initialize LiHa arm: PIA, query ranges, init plungers."""
     # Setup arm (PIA + BMX)
     await self._setup_arm(LIHA)
