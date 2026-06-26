@@ -93,7 +93,7 @@ async def main():
   print("Ready!")
 
   # Check tip status
-  resp = await evo._driver.send_command("C5", command="RTS")
+  resp = await evo.driver.send_command("C5", command="RTS")
   tip_status = resp["data"][0] if resp and resp.get("data") else 0
   print(f"\nTip status (RTS): {tip_status} (0=no tips, 255=all tips)")
 
@@ -109,7 +109,7 @@ async def main():
     await evo.pip.drop_tips(tip_rack.get_items(wells))
     print("Tips dropped!")
 
-    resp = await evo._driver.send_command("C5", command="RTS")
+    resp = await evo.driver.send_command("C5", command="RTS")
     tip_status = resp["data"][0] if resp and resp.get("data") else 0
     print(f"Final tip status: {tip_status}")
 
@@ -119,7 +119,7 @@ async def main():
   num_ch = pip_be.num_channels
   print("Raising channels to Z max...")
   z_params = ",".join([str(z_range)] * num_ch)
-  await evo._driver.send_command("C5", command=f"PAZ{z_params}")
+  await evo.driver.send_command("C5", command=f"PAZ{z_params}")
   print("Channels raised.")
 
   await evo.stop()

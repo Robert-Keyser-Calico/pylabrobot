@@ -130,7 +130,7 @@ async def main():
   step = 5.0
   recorded = load_json(POSITIONS_FILE)
   labware_edits = load_json(LABWARE_FILE)
-  driver = evo._driver
+  driver = evo.driver
   num_ch = evo.pip.num_channels
   z_range = evo.pip.backend._z_range
 

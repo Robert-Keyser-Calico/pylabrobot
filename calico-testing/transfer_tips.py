@@ -116,14 +116,14 @@ async def main():
     input(f"\nPress Enter to pick up {label} tips from column {src_col}...")
     await evo.pip.pick_up_tips(tip_rack.get_items(src_wells))
 
-    resp = await evo._driver.send_command("C5", command="RTS")
+    resp = await evo.driver.send_command("C5", command="RTS")
     tip_status = resp["data"][0] if resp and resp.get("data") else 0
     print(f"Tip status after pickup: {tip_status} (255=all mounted)")
 
     input(f"\nPress Enter to drop tips into column {dst_col}...")
     await evo.pip.drop_tips(tip_rack.get_items(dst_wells))
 
-    resp = await evo._driver.send_command("C5", command="RTS")
+    resp = await evo.driver.send_command("C5", command="RTS")
     tip_status = resp["data"][0] if resp and resp.get("data") else 0
     print(f"Tip status after drop: {tip_status} (0=no tips)")
 
@@ -132,7 +132,7 @@ async def main():
     z_range = pip_be._z_range
     num_ch = pip_be.num_channels
     z_params = ",".join([str(z_range)] * num_ch)
-    await evo._driver.send_command("C5", command=f"PAZ{z_params}")
+    await evo.driver.send_command("C5", command=f"PAZ{z_params}")
     print("Channels raised to Z max.")
 
     print(f"\nTransfer complete: column {src_col} -> column {dst_col}")

@@ -1863,7 +1863,7 @@ async def connect_evo():
   global driver, connected
   print("Connecting to EVO...")
   await evo.setup()
-  driver = evo._driver
+  driver = evo.driver
   connected = True
   print("EVO connected!")
 

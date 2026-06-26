@@ -97,7 +97,7 @@ async def main():
     await evo.pip.pick_up_tips(tip_rack.get_items(wells))
 
     # Verify
-    resp = await evo._driver.send_command("C5", command="RTS")
+    resp = await evo.driver.send_command("C5", command="RTS")
     tip_status = resp["data"][0] if resp and resp.get("data") else 0
     print(f"Tip status: {tip_status} (255=all mounted)")
 
@@ -105,7 +105,7 @@ async def main():
     z_range = evo.pip.backend._z_range
     num_ch = evo.pip.backend.num_channels
     z_params = ",".join([str(z_range)] * num_ch)
-    await evo._driver.send_command("C5", command=f"PAZ{z_params}")
+    await evo.driver.send_command("C5", command=f"PAZ{z_params}")
     print("Channels raised to Z max.")
 
     print(f"\n{label} tips loaded. Use jog UI to calibrate Z positions.")

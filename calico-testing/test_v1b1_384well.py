@@ -330,7 +330,7 @@ async def main():
     z_range = pip_be._z_range
     num_ch = pip_be.num_channels
     z_params = ",".join([str(z_range)] * num_ch)
-    await evo._driver.send_command("C5", command=f"PAZ{z_params}")
+    await evo.driver.send_command("C5", command=f"PAZ{z_params}")
 
     print("\nStopping...")
     await evo.stop()
