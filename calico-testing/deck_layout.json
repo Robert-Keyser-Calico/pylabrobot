@@ -1,0 +1,35 @@
+{
+  "deck_type": "EVO150Deck",
+  "carriers": [
+    {
+      "type": "MP_3Pos_Corrected",
+      "name": "carrier_r4",
+      "rails": 4,
+      "labware": [
+        {"pos": 0, "type": "Eppendorf_96_wellplate_250ul_Vb_skirted", "name": "source_r4"},
+        {"pos": 1, "type": "Eppendorf_96_wellplate_250ul_Vb_skirted", "name": "dest_r4"},
+        {"pos": 2, "type": "DiTi_50ul_SBS_LiHa_Air", "name": "tips_50ul"}
+      ]
+    },
+    {
+      "type": "MP_3Pos_Corrected",
+      "name": "carrier_r16",
+      "rails": 16,
+      "labware": [
+        {"pos": 0, "type": "Eppendorf_96_wellplate_250ul_Vb_skirted", "name": "source_r16"},
+        {"pos": 1, "type": "Eppendorf_96_wellplate_250ul_Vb_skirted", "name": "dest_r16"},
+        {"pos": 2, "type": "DiTi_200ul_SBS_LiHa_Air", "name": "tips_200ul"}
+      ]
+    },
+    {
+      "type": "MP_3Pos_Corrected",
+      "name": "carrier_r26",
+      "rails": 26,
+      "labware": [
+        {"pos": 0, "type": "DeepWell_96_Round_Corrected", "name": "source_r26"},
+        {"pos": 1, "type": "DeepWell_96_Round_Corrected", "name": "dest_r26"},
+        {"pos": 2, "type": "DiTi_1000ul_SBS_LiHa_Air", "name": "tips_1000ul"}
+      ]
+    }
+  ]
+}

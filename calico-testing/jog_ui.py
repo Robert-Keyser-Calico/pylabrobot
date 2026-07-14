@@ -1802,18 +1802,10 @@ def build_deck():
   """Build the deck and EVO device WITHOUT connecting to hardware."""
   global evo, tip_racks
 
-  from labware_library import (
-    DeepWell_96_Round_Corrected,
-    DiTi_50ul_SBS_LiHa_Air,
-    DiTi_200ul_SBS_LiHa_Air,
-    DiTi_1000ul_SBS_LiHa_Air,
-    Eppendorf_96_wellplate_250ul_Vb_skirted,
-    MP_3Pos_Corrected,
-  )
-  from pylabrobot.resources.tecan.tecan_decks import EVO150Deck
+  from deck_loader import load_deck
   from pylabrobot.tecan.evo import TecanEVO
 
-  deck = EVO150Deck()
+  deck, tip_racks = load_deck()
   evo = TecanEVO(
     name="evo",
     deck=deck,
@@ -1825,37 +1817,7 @@ def build_deck():
     write_timeout=120,
   )
 
-  # Rail 4: 50uL tips + Eppendorf plates
-  carrier_r4 = MP_3Pos_Corrected("carrier_r4")
-  deck.assign_child_resource(carrier_r4, rails=4)
-  carrier_r4[0] = Eppendorf_96_wellplate_250ul_Vb_skirted("source_r4")
-  carrier_r4[1] = Eppendorf_96_wellplate_250ul_Vb_skirted("dest_r4")
-  tips_50 = DiTi_50ul_SBS_LiHa_Air("tips_50ul")
-  carrier_r4[2] = tips_50
-
-  # Rail 16: 200uL tips + Eppendorf plates
-  carrier_r16 = MP_3Pos_Corrected("carrier_r16")
-  deck.assign_child_resource(carrier_r16, rails=16)
-  carrier_r16[0] = Eppendorf_96_wellplate_250ul_Vb_skirted("source_r16")
-  carrier_r16[1] = Eppendorf_96_wellplate_250ul_Vb_skirted("dest_r16")
-  tips_200 = DiTi_200ul_SBS_LiHa_Air("tips_200ul")
-  carrier_r16[2] = tips_200
-
-  # Rail 26: 1000uL tips + deep-well plates
-  carrier_r26 = MP_3Pos_Corrected("carrier_r26")
-  deck.assign_child_resource(carrier_r26, rails=26)
-  carrier_r26[0] = DeepWell_96_Round_Corrected("source_r26")
-  carrier_r26[1] = DeepWell_96_Round_Corrected("dest_r26")
-  tips_1000 = DiTi_1000ul_SBS_LiHa_Air("tips_1000ul")
-  carrier_r26[2] = tips_1000
-
-  tip_racks = {
-    "50": tips_50,
-    "200": tips_200,
-    "1000": tips_1000,
-  }
-
-  print("Deck built (not connected).")
+  print("Deck built from deck_layout.json (not connected).")
 
 
 async def connect_evo():

@@ -1,13 +1,9 @@
 """Hardware test: TecanEVO v1b1 RoMa plate handling.
 
 Tests RoMa pick/place via the high-level move_resource API.
+Deck layout loaded from deck_layout.json.
 
 Route: carrier_r4[0] -> carrier_r16[0] -> carrier_r26[0] -> carrier_r4[0]
-
-Deck layout (matches jog_ui.py):
-  Rail  4: MP_3Pos carrier ("carrier_r4")  — plate in pos 0, pos 1-2 empty
-  Rail 16: MP_3Pos carrier ("carrier_r16") — all empty
-  Rail 26: MP_3Pos carrier ("carrier_r26") — all empty
 
 Usage:
   python calico-testing/test_v1b1_roma.py
@@ -20,8 +16,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from labware_library import Eppendorf_96_wellplate_250ul_Vb_skirted, MP_3Pos_Corrected
-from pylabrobot.resources.tecan.tecan_decks import EVO150Deck
+from deck_loader import load_deck
+from labware_library import Eppendorf_96_wellplate_250ul_Vb_skirted
 from pylabrobot.tecan.evo import TecanEVO
 from pylabrobot.tecan.evo.params import TecanRoMaParams
 
@@ -42,11 +38,10 @@ async def main():
   print("=" * 60)
   print("  TecanEVO v1b1 RoMa Multi-Position Test")
   print("  Using high-level move_resource API")
-  print("  Deck layout matches jog_ui.py")
+  print("  Deck layout from deck_layout.json")
   print("=" * 60)
 
-  # --- Deck setup (matching jog_ui.py) ---
-  deck = EVO150Deck()
+  deck, _tip_racks = load_deck()
   evo = TecanEVO(
     name="evo",
     deck=deck,
@@ -58,12 +53,9 @@ async def main():
     write_timeout=120,
   )
 
-  carrier_r4 = MP_3Pos_Corrected("carrier_r4")
-  carrier_r16 = MP_3Pos_Corrected("carrier_r16")
-  carrier_r26 = MP_3Pos_Corrected("carrier_r26")
-  deck.assign_child_resource(carrier_r4, rails=4)
-  deck.assign_child_resource(carrier_r16, rails=16)
-  deck.assign_child_resource(carrier_r26, rails=26)
+  carrier_r4 = deck.get_resource("carrier_r4")
+  carrier_r16 = deck.get_resource("carrier_r16")
+  carrier_r26 = deck.get_resource("carrier_r26")
 
   plate = Eppendorf_96_wellplate_250ul_Vb_skirted("plate")
   carrier_r4[0] = plate
