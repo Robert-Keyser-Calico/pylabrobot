@@ -2,16 +2,15 @@
 
 Tests RoMa pick/place via the high-level move_resource API.
 
-Route: carrier_src[0] -> carrier_dst[0] -> carrier_dst[1] -> carrier_dst[2] -> carrier_src[0]
+Route: carrier_r4[0] -> carrier_r16[0] -> carrier_r26[0] -> carrier_r4[0]
 
-Deck layout:
-  Rail 16: MP_3Pos carrier ("carrier_src")
-    Position 1: source plate (Eppendorf 96-well)
-  Rail 22: MP_3Pos carrier ("carrier_dst")
-    All positions empty
+Deck layout (matches jog_ui.py):
+  Rail  4: MP_3Pos carrier ("carrier_r4")  — plate in pos 0, pos 1-2 empty
+  Rail 16: MP_3Pos carrier ("carrier_r16") — all empty
+  Rail 26: MP_3Pos carrier ("carrier_r26") — all empty
 
 Usage:
-  python keyser-testing/test_v1b1_roma.py
+  python calico-testing/test_v1b1_roma.py
 """
 
 import asyncio
@@ -43,9 +42,10 @@ async def main():
   print("=" * 60)
   print("  TecanEVO v1b1 RoMa Multi-Position Test")
   print("  Using high-level move_resource API")
+  print("  Deck layout matches jog_ui.py")
   print("=" * 60)
 
-  # --- Deck setup ---
+  # --- Deck setup (matching jog_ui.py) ---
   deck = EVO150Deck()
   evo = TecanEVO(
     name="evo",
@@ -58,18 +58,21 @@ async def main():
     write_timeout=120,
   )
 
-  carrier_src = MP_3Pos_Corrected("carrier_src")
-  carrier_dst = MP_3Pos_Corrected("carrier_dst")
-  deck.assign_child_resource(carrier_src, rails=16)
-  deck.assign_child_resource(carrier_dst, rails=22)
+  carrier_r4 = MP_3Pos_Corrected("carrier_r4")
+  carrier_r16 = MP_3Pos_Corrected("carrier_r16")
+  carrier_r26 = MP_3Pos_Corrected("carrier_r26")
+  deck.assign_child_resource(carrier_r4, rails=4)
+  deck.assign_child_resource(carrier_r16, rails=16)
+  deck.assign_child_resource(carrier_r26, rails=26)
 
   plate = Eppendorf_96_wellplate_250ul_Vb_skirted("plate")
-  carrier_src[0] = plate
+  carrier_r4[0] = plate
 
   print("\nDeck layout:")
-  print(f"  Rail 16: {carrier_src.name}  [plate in pos 1]")
-  print(f"  Rail 22: {carrier_dst.name}  [all empty]")
-  print("\nRoute: src[0] -> dst[0] -> dst[1] -> dst[2] -> src[0]")
+  print(f"  Rail  4: {carrier_r4.name}   [plate in pos 0]")
+  print(f"  Rail 16: {carrier_r16.name}  [empty]")
+  print(f"  Rail 26: {carrier_r26.name}  [empty]")
+  print("\nRoute: r4[0] -> r16[0] -> r26[0] -> r4[0]")
 
   print("\nInitializing...")
   try:
@@ -87,21 +90,19 @@ async def main():
 
   try:
     moves = [
-      (carrier_dst[0], "carrier_src[0] -> carrier_dst[0]"),
-      (carrier_dst[1], "carrier_dst[0] -> carrier_dst[1]"),
-      (carrier_dst[2], "carrier_dst[1] -> carrier_dst[2]"),
-      (carrier_src[0], "carrier_dst[2] -> carrier_src[0] (return)"),
+      (carrier_r16[0], "carrier_r4[0] -> carrier_r16[0]"),
+      (carrier_r26[0], "carrier_r16[0] -> carrier_r26[0]"),
+      (carrier_r4[0], "carrier_r26[0] -> carrier_r4[0] (return)"),
     ]
 
     for i, (destination, label) in enumerate(moves, 1):
       print(f"\n--- Step {i}: {label} ---")
       print(f"  Plate at: {plate.parent.parent.name}[{plate.parent.name}]")
-      input("Press Enter to move...")
+      await asyncio.sleep(2)
 
       await evo.arm.move_resource(
         plate, destination,
-        pickup_backend_params=SLOW_PARAMS,
-        drop_backend_params=SLOW_PARAMS,
+        backend_params=SLOW_PARAMS,
       )
       print(f"  Plate now at: {plate.parent.parent.name}[{plate.parent.name}]")
 

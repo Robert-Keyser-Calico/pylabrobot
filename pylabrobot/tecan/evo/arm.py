@@ -39,6 +39,9 @@ class TecanGripperArm(GripperArm):
 
   backend: EVORoMaBackend
 
+  def _resource_width(self, resource: Resource) -> float:
+    return resource.get_absolute_size_y()
+
   async def pick_up_resource(
     self,
     resource: Resource,
@@ -51,11 +54,11 @@ class TecanGripperArm(GripperArm):
 
     await self.backend.pick_up_from_carrier(resource, backend_params=backend_params)
 
-    pickup_distance_from_top = self._resolve_pickup_distance(resource, pickup_distance_from_top)
+    pickup_distance_from_bottom = self._resolve_pickup_distance(resource, pickup_distance_from_top)
     self._picked_up = _PickedUpState(
       resource=resource,
       offset=offset,
-      pickup_distance_from_top=pickup_distance_from_top,
+      pickup_distance_from_bottom=pickup_distance_from_bottom,
       resource_width=resource_width,
     )
     self._state_updated()
